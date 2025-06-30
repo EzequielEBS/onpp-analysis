@@ -1,3 +1,11 @@
 *.Rhistory
 /results/cmdstan_outputs/
 *.exe
+*.Rproj.user
+*.RDataTmp
+2009_Neuenschwander_et_al_StatMed.pdf
+2025_Han_StatInMed.pdf
+2025_Lee.pdf
+lm_onpp_report/
+*.Rproj
+presentation_2025_Han_StatInMed.pdf

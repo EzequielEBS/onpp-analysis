@@ -252,7 +252,7 @@ post_delta_raw1_poi <- ggplot(df_combined_delta_raw_sim1, aes(x = value, color =
 post_theta_raw1_poi <- ggplot(df_combined_theta_raw_sim1, aes(x = theta, color = dist)) +
   geom_density(size = 0.8) +
   theme_bw() +
-  labs(title = "", x = expression(theta), y = "") +
+  labs(title = "", x = expression(lambda), y = "") +
   scale_fill_manual(values = colors_delta) +
   scale_color_manual(values = colors_delta) +
   ylim(0, max(c(density(df_combined_theta_raw_sim1$theta)$y, 

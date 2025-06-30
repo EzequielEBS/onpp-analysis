@@ -436,7 +436,7 @@ plot_boxplot <- function(draws, variable) {
     theme_bw()+labs(x = NULL) + 
     labs(y = variable)+
     stat_boxplot(geom ='errorbar', coef = 0.5, width = 0.25)+
-    geom_boxplot(outlier.colour="black", outlier.shape= NA, 
+    geom_boxplot(outlier.colour="black", 
                  width = 0.4, outlier.size = 0.3, coef = 0.5)+
     stat_summary(fun = mean, colour="yellow3", geom="point", 
                  shape=18, size=3, show.legend = FALSE)+
