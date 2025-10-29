@@ -51,7 +51,7 @@ generate_lm <- function(X0, beta0, sg0, X, beta, sg) {
 }
 
 #-------------------------------------------------------------------------------
-# Generate perfect scenario 1
+# Generate scenarios
 #-------------------------------------------------------------------------------
 
 # define historical parameters
@@ -66,86 +66,39 @@ p <- p0
 # set number of datasets to generate
 N <- 100
 
-# set inputs to generate data
-beta0 <- matrix(rep(c(1, -0.5, 0.5), K), nrow = p0, ncol = K)
-sg0 <- rep(0.5, K)
-inputs0 <- list(
-  beta0 = beta0,
-  sg0 = sg0,
-  X0 = lapply(1:K, function(k) {
-    cbind(1, matrix(rnorm(n0 * (p0-1)), nrow = n0, ncol = p0-1))
-  }),
-  beta = beta0[, 1],  # Assuming beta is the same as beta0 for simplicity
-  sg = sg0[1],  # Assuming sg is the same as sg0 for simplicity
-  X = cbind(1, matrix(rnorm(n * (p-1)), nrow = n, ncol = p-1))
-)
+betastar <- c(1, -0.5, 0.5)
+sgstar <- 1
+cs <- list(c(1, 1, 1),
+           c(0.3, 0.5, 0.7),
+           c(1, 0.5, 1),
+           c(0.7, 0.5, 0.3)
+           )
 
+generate_sce <- function(i) {
+  c <- cs[[i]]
+  # set inputs to generate data
+  inputs0 <- list(
+    beta0 = matrix(rep(betastar, K), nrow = p0, ncol = K) %*% diag(c),
+    sg0 = as.vector(rep(sgstar, K) %*% diag(c)),
+    X0 = lapply(1:K, function(k) {
+      cbind(1, matrix(rnorm(n0 * (p0-1)), nrow = n0, ncol = p0-1))
+    }),
+    beta = betastar,  # Assuming beta is the same as beta0 for simplicity
+    sg = sgstar,  # Assuming sg is the same as sg0 for simplicity
+    X = cbind(1, matrix(rnorm(n * (p-1)), nrow = n, ncol = p-1))
+  )
+  
+  
+  inputs <- rep(list(inputs0), N)
+  
+  # Generate datasets
+  sce_data <- mclapply(inputs, function(params) {
+    generate_lm(params$X0, params$beta0, params$sg0,
+                params$X, params$beta, params$sg)
+  })
+  saveRDS(sce_data, file = paste0("results/sim_data/sce_lm_data_c", i, ".rds"))
+  return(sce_data)
+}
 
-inputs <- rep(list(inputs0), N)
+all_sce_data <- lapply(1:length(cs), generate_sce)
 
-# define cluster for parallel processing
-cl <- makeCluster(detectCores() - 1)  # or 4, etc.
-clusterExport(cl, varlist = c("flatten_data", "generate_lm"))  # Export function
-
-# Generate datasets in parallel
-sce1_data <- parLapply(cl, inputs, function(params) {
-  generate_lm(params$X0, params$beta0, params$sg0,
-              params$X, params$beta, params$sg)
-})
-
-# Stop the cluster
-stopCluster(cl)
-
-
-# Save the generated data
-save(sce1_data, file = "results/sim_data/sce1_lm_data.RData")
-
-#-------------------------------------------------------------------------------
-# Generate perfect scenario 2
-#-------------------------------------------------------------------------------
-
-# define historical parameters
-K <- 3
-p0 <- 3
-n0 <- 50
-
-# define current parameters
-n <- n0
-p <- p0
-
-# set number of datasets to generate
-N <- 100
-
-# set inputs to generate data
-beta0 <- matrix(rep(c(1, -0.5, 0.5), K), nrow = p0, ncol = K)
-sg0 <- rep(1, K)
-inputs0 <- list(
-  beta0 = beta0,
-  sg0 = sg0,
-  X0 = lapply(1:K, function(k) {
-    cbind(1, matrix(rnorm(n0 * (p0-1)), nrow = n0, ncol = p0-1))
-  }),
-  beta = beta0[, 1],  # Assuming beta is the same as beta0 for simplicity
-  sg = sg0[1],  # Assuming sg is the same as sg0 for simplicity
-  X = cbind(1, matrix(rnorm(n * (p-1)), nrow = n, ncol = p-1))
-)
-
-
-inputs <- rep(list(inputs0), N)
-
-# define cluster for parallel processing
-cl <- makeCluster(detectCores() - 1)  # or 4, etc.
-clusterExport(cl, varlist = c("flatten_data", "generate_lm"))  # Export function
-
-# Generate datasets in parallel
-sce2_data <- parLapply(cl, inputs, function(params) {
-  generate_lm(params$X0, params$beta0, params$sg0,
-              params$X, params$beta, params$sg)
-})
-
-# Stop the cluster
-stopCluster(cl)
-
-
-# Save the generated data
-save(sce2_data, file = "results/sim_data/sce2_lm_data.RData")

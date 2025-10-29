@@ -1,6 +1,6 @@
 # Load data
-load("results/sim_data/sce1_lm_data.RData")
-load("results/sim_data/sce2_lm_data.RData")
+load("results/sim_data/perf_sce_lm_data.RData")
+load("results/sim_data/inc_sce_lm_data.RData")
 
 # Load libraries
 library(cmdstanr)
@@ -14,6 +14,8 @@ library(MCMCpack)
 library(ggh4x)
 library(rstan)
 library(shinystan)
+library(hdbayes)
+library(parallel)
 
 # Compile the model
 gamma_model <- cmdstan_model("code/models/gamma_lm.stan")
@@ -222,9 +224,9 @@ fit_lm <- function(data, models, prior_parameters) {
 
 
 # define prior parameters
-K <- length(sce1_data[[1]]$X0)
-p <- ncol(sce1_data[[1]]$X)
-perf_sce_hyperpar1 <- list(
+K <- length(perf_sce_data[[1]]$X0)
+p <- ncol(perf_sce_data[[1]]$X)
+perf_sce_hyper <- list(
   a = 2,
   b = 1,
   tilde_a = 1/2,
@@ -233,63 +235,20 @@ perf_sce_hyperpar1 <- list(
   mu0 = rep(0, p),
   V0 = diag(p)
 )
-perf_sce_hyperpar2 <- list(
-  a = 2,
-  b = 1,
-  tilde_a = 1/2,
-  tilde_b = 1/2,
-  alpha = rep(10, K+1),
-  mu0 = rep(0, p),
-  V0 = diag(p)
-)
-
-# define cluster for parallel processing
-cl <- makeCluster(detectCores() - 1)
-clusterExport(cl, 
-              varlist = c("gamma_model",
-                          "delta_model",
-                          "fit_lm",
-                          "perf_sce_hyperpar1",
-                          "perf_sce_hyperpar2"
-                          )
-)  # Export function
-clusterEvalQ(cl,{
-             library("tidyverse")
-             library("posterior")
-             library("mvtnorm")
-  }
-)
-
 
 # Fitting datasets in parallel
-sample_perf_sce1 <- parLapply(cl, sce1_data, function(data) {
+sample_perf_sce <- mclapply(perf_sce_data, function(data) {
   fit_lm(data, 
          list(gamma_model = gamma_model,
               delta_model = delta_model),
-         perf_sce_hyperpar1)
+         perf_sce_hyper)
 })
-sample_perf_sce2 <- parLapply(cl, sce1_data, function(data) {
+sample_inc_sce <- mclapply(inc_sce_data, function(data) {
   fit_lm(data, 
          list(gamma_model = gamma_model,
               delta_model = delta_model),
-         perf_sce_hyperpar2)
+         perf_sce_hyper)
 })
-sample_perf_sce3 <- parLapply(cl, sce2_data, function(data) {
-  fit_lm(data, 
-         list(gamma_model = gamma_model,
-              delta_model = delta_model),
-         perf_sce_hyperpar1)
-})
-sample_perf_sce4 <- parLapply(cl, sce2_data, function(data) {
-  fit_lm(data, 
-         list(gamma_model = gamma_model,
-              delta_model = delta_model),
-         perf_sce_hyperpar2)
-})
-
-
-# Stop the cluster
-stopCluster(cl)
 
 # Extract draws from the samples
 get_hat_par <- function(samples) {
@@ -343,407 +302,170 @@ get_hat_par <- function(samples) {
               hat_sigma_onppseq = hat_sigma_onppseq))
 }
 
-# Plot stuff for perfect scenario 1
+# Plot stuff for perfect scenario
 
-# prior draws
-alpha_perf_sce1 <- perf_sce_hyperpar1$alpha
-# Sample 5000 draws from Dirichlet(alpha)
-prior_sample_gamma_perf_sec1 <- rdirichlet(5000, alpha_perf_sce1)
+hat_par_perf_sce <- get_hat_par(sample_perf_sce)
 
-# Compute delta = cumulative sum of first K gammas
-prior_sample_delta_perf_sec1 <- t(apply(prior_sample_gamma_perf_sec1[, 1:K], 1, cumsum))
-colnames(prior_sample_delta_perf_sec1) <- paste0("delta", 1:K)
+hat_delta1_perf_sce <- cbind(hat_par_perf_sce$hat_delta_npp[,1], 
+                              hat_par_perf_sce$hat_delta_nppseq[,1],
+                              hat_par_perf_sce$hat_delta_onpp[,1],
+                              hat_par_perf_sce$hat_delta_onppseq[,1])
+hat_delta2_perf_sce <- cbind(hat_par_perf_sce$hat_delta_npp[,2],
+                              hat_par_perf_sce$hat_delta_nppseq[,2],
+                              hat_par_perf_sce$hat_delta_onpp[,2],
+                              hat_par_perf_sce$hat_delta_onppseq[,2])
+hat_delta3_perf_sce <- cbind(hat_par_perf_sce$hat_delta_npp[,3],
+                              hat_par_perf_sce$hat_delta_nppseq[,3],
+                              hat_par_perf_sce$hat_delta_onpp[,3],
+                              hat_par_perf_sce$hat_delta_onppseq[,3])
 
-# Put into dataframe
-prior_sample_delta_perf_sec1 <- as.data.frame(prior_sample_delta_perf_sec1) %>%
-  pivot_longer(cols = everything(),
-               names_to = "component",
-               values_to = "value")
+hat_beta1_perf_sce <- cbind(hat_par_perf_sce$hat_beta_npp[,1],
+                             hat_par_perf_sce$hat_beta_nppseq[,1],
+                             hat_par_perf_sce$hat_beta_onpp[,1],
+                             hat_par_perf_sce$hat_beta_onppseq[,1])
+hat_beta2_perf_sce <- cbind(hat_par_perf_sce$hat_beta_npp[,2],
+                             hat_par_perf_sce$hat_beta_nppseq[,2],
+                             hat_par_perf_sce$hat_beta_onpp[,2],
+                             hat_par_perf_sce$hat_beta_onppseq[,2])
+hat_beta3_perf_sce <- cbind(hat_par_perf_sce$hat_beta_npp[,3],
+                             hat_par_perf_sce$hat_beta_nppseq[,3],
+                             hat_par_perf_sce$hat_beta_onpp[,3],
+                             hat_par_perf_sce$hat_beta_onppseq[,3])
 
-hat_par_perf_sce1 <- get_hat_par(sample_perf_sce1)
-
-hat_delta1_perf_sce1 <- cbind(hat_par_perf_sce1$hat_delta_npp[,1], 
-                              hat_par_perf_sce1$hat_delta_nppseq[,1],
-                              hat_par_perf_sce1$hat_delta_onpp[,1],
-                              hat_par_perf_sce1$hat_delta_onppseq[,1])
-hat_delta2_perf_sce1 <- cbind(hat_par_perf_sce1$hat_delta_npp[,2],
-                              hat_par_perf_sce1$hat_delta_nppseq[,2],
-                              hat_par_perf_sce1$hat_delta_onpp[,2],
-                              hat_par_perf_sce1$hat_delta_onppseq[,2])
-hat_delta3_perf_sce1 <- cbind(hat_par_perf_sce1$hat_delta_npp[,3],
-                              hat_par_perf_sce1$hat_delta_nppseq[,3],
-                              hat_par_perf_sce1$hat_delta_onpp[,3],
-                              hat_par_perf_sce1$hat_delta_onppseq[,3])
-
-hat_beta1_perf_sce1 <- cbind(hat_par_perf_sce1$hat_beta_npp[,1],
-                             hat_par_perf_sce1$hat_beta_nppseq[,1],
-                             hat_par_perf_sce1$hat_beta_onpp[,1],
-                             hat_par_perf_sce1$hat_beta_onppseq[,1])
-hat_beta2_perf_sce1 <- cbind(hat_par_perf_sce1$hat_beta_npp[,2],
-                             hat_par_perf_sce1$hat_beta_nppseq[,2],
-                             hat_par_perf_sce1$hat_beta_onpp[,2],
-                             hat_par_perf_sce1$hat_beta_onppseq[,2])
-hat_beta3_perf_sce1 <- cbind(hat_par_perf_sce1$hat_beta_npp[,3],
-                             hat_par_perf_sce1$hat_beta_nppseq[,3],
-                             hat_par_perf_sce1$hat_beta_onpp[,3],
-                             hat_par_perf_sce1$hat_beta_onppseq[,3])
-
-hat_sigma_perf_sce1 <- cbind(hat_par_perf_sce1$hat_sigma_npp[,1],
-                             hat_par_perf_sce1$hat_sigma_nppseq[,1],
-                             hat_par_perf_sce1$hat_sigma_onpp[,1],
-                             hat_par_perf_sce1$hat_sigma_onppseq[,1])
+hat_sigma_perf_sce <- cbind(hat_par_perf_sce$hat_sigma_npp[,1],
+                             hat_par_perf_sce$hat_sigma_nppseq[,1],
+                             hat_par_perf_sce$hat_sigma_onpp[,1],
+                             hat_par_perf_sce$hat_sigma_onppseq[,1])
 
 # Plotting
 
-prior_sample_delta_perf_sec1$component <- 
-  factor(prior_sample_delta_perf_sec1$component,
-         levels = c("delta1", "delta2", "delta3"),
-         labels = c("delta[1]", "delta[2]", "delta[3]"))
-dens_prior_delta_perf_sce1 <- ggplot(prior_sample_delta_perf_sec1, 
-                                  aes(x = value)) +
-  geom_density(fill = "steelblue", alpha = 0.5) +
-  facet_wrap(~component, 
-             scales = "free",
-             labeller = label_parsed
-             ) +
-  theme_bw() +
-  labs(title = "",
-       x = "",
-       y = expression(pi[0](delta)))
 
-box_delta1_perf_sce1 <- plot_boxplot(hat_delta1_perf_sce1, 
+box_delta1_perf_sce <- plot_boxplot(hat_delta1_perf_sce, 
                                      expression(hat(delta)[1]))
-box_delta2_perf_sce1 <- plot_boxplot(hat_delta2_perf_sce1,
+box_delta2_perf_sce <- plot_boxplot(hat_delta2_perf_sce,
                                      expression(hat(delta)[2]))
-box_delta3_perf_sce1 <- plot_boxplot(hat_delta3_perf_sce1,
+box_delta3_perf_sce <- plot_boxplot(hat_delta3_perf_sce,
                                      expression(hat(delta)[3]))
 
-box_beta1_perf_sce1 <- plot_boxplot(hat_beta1_perf_sce1, 
+box_beta1_perf_sce <- plot_boxplot(hat_beta1_perf_sce, 
                                       expression(hat(beta)[1])) + 
-  geom_hline(yintercept = sce1_data[[1]]$beta[1],
+  geom_hline(yintercept = perf_sce_data[[1]]$beta[1],
              color = "red", linetype = "dashed", size = 1)
-box_beta2_perf_sce1 <- plot_boxplot(hat_beta2_perf_sce1, 
+box_beta2_perf_sce <- plot_boxplot(hat_beta2_perf_sce, 
                                       expression(hat(beta)[2])) +
-  geom_hline(yintercept = sce1_data[[1]]$beta[2],
+  geom_hline(yintercept = perf_sce_data[[1]]$beta[2],
              color = "red", linetype = "dashed", size = 1)
-box_beta3_perf_sce1 <- plot_boxplot(hat_beta3_perf_sce1, 
+box_beta3_perf_sce <- plot_boxplot(hat_beta3_perf_sce, 
                                       expression(hat(beta)[3])) +
-  geom_hline(yintercept = sce1_data[[1]]$beta[3],
+  geom_hline(yintercept = perf_sce_data[[1]]$beta[3],
              color = "red", linetype = "dashed", size = 1)
 
-box_sigma_perf_sce1 <- plot_boxplot(hat_sigma_perf_sce1, 
+box_sigma_perf_sce <- plot_boxplot(hat_sigma_perf_sce, 
                                       expression(hat(sigma^2))) +
-  geom_hline(yintercept = sce1_data[[1]]$sg,
+  geom_hline(yintercept = perf_sce_data[[1]]$sg,
              color = "red", linetype = "dashed", size = 1)
 
 
 # save plots
-ggsave("results/figures/lm_sim/perf_sce1/dens_prior_delta_perf_sce1.png", 
-       plot = dens_prior_delta_perf_sce1, 
-       width = 12, height = 6)
-ggsave("results/figures/lm_sim/perf_sce1/perf_sce1_delta1.png", 
-       plot = box_delta1_perf_sce1, 
+ggsave("results/figures/lm_sim/perf_sce/perf_sce_delta1.pdf", 
+       plot = box_delta1_perf_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce1/perf_sce1_delta2.png",
-       plot = box_delta2_perf_sce1, 
+ggsave("results/figures/lm_sim/perf_sce/perf_sce_delta2.pdf",
+       plot = box_delta2_perf_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce1/perf_sce1_delta3.png",
-       plot = box_delta3_perf_sce1, 
+ggsave("results/figures/lm_sim/perf_sce/perf_sce_delta3.pdf",
+       plot = box_delta3_perf_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce1/perf_sce1_beta1.png",
-       plot = box_beta1_perf_sce1, 
+ggsave("results/figures/lm_sim/perf_sce/perf_sce_beta1.pdf",
+       plot = box_beta1_perf_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce1/perf_sce1_beta2.png",
-       plot = box_beta2_perf_sce1, 
+ggsave("results/figures/lm_sim/perf_sce/perf_sce_beta2.pdf",
+       plot = box_beta2_perf_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce1/perf_sce1_beta3.png",
-       plot = box_beta3_perf_sce1, 
+ggsave("results/figures/lm_sim/perf_sce/perf_sce_beta3.pdf",
+       plot = box_beta3_perf_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce1/perf_sce1_sigma.png",
-       plot = box_sigma_perf_sce1, 
+ggsave("results/figures/lm_sim/perf_sce/perf_sce_sigma.pdf",
+       plot = box_sigma_perf_sce, 
        width = 8, height = 6)
 
+# -------------------------------------------------------------------------------
+# Plotting stuff for incompatible scenario
 
-
-# Plot stuff for perfect scenario 2
-hat_par_perf_sce2 <- get_hat_par(sample_perf_sce2)
-
-# prior draws
-alpha_perf_sce2 <- perf_sce_hyperpar2$alpha
-# Sample 5000 draws from Dirichlet(alpha)
-prior_sample_gamma_perf_sec2 <- rdirichlet(8000, alpha_perf_sce2)
-
-# Compute delta = cumulative sum of first K gammas
-prior_sample_delta_perf_sec2 <- t(apply(prior_sample_gamma_perf_sec2[, 1:K], 1, cumsum))
-colnames(prior_sample_delta_perf_sec2) <- paste0("delta", 1:K)
-
-# Put into dataframe
-prior_sample_delta_perf_sec2 <- as.data.frame(prior_sample_delta_perf_sec2) %>%
-  pivot_longer(cols = everything(),
-               names_to = "component",
-               values_to = "value")
-
-hat_delta1_perf_sce2 <- cbind(hat_par_perf_sce2$hat_delta_npp[,1],
-                              hat_par_perf_sce2$hat_delta_nppseq[,1],
-                              hat_par_perf_sce2$hat_delta_onpp[,1],
-                              hat_par_perf_sce2$hat_delta_onppseq[,1])
-hat_delta2_perf_sce2 <- cbind(hat_par_perf_sce2$hat_delta_npp[,2],
-                              hat_par_perf_sce2$hat_delta_nppseq[,2],
-                              hat_par_perf_sce2$hat_delta_onpp[,2],
-                              hat_par_perf_sce2$hat_delta_onppseq[,2])
-hat_delta3_perf_sce2 <- cbind(hat_par_perf_sce2$hat_delta_npp[,3],
-                              hat_par_perf_sce2$hat_delta_nppseq[,3],
-                              hat_par_perf_sce2$hat_delta_onpp[,3],
-                              hat_par_perf_sce2$hat_delta_onppseq[,3])
-hat_beta1_perf_sce2 <- cbind(hat_par_perf_sce2$hat_beta_npp[,1],
-                             hat_par_perf_sce2$hat_beta_nppseq[,1],
-                             hat_par_perf_sce2$hat_beta_onpp[,1],
-                             hat_par_perf_sce2$hat_beta_onppseq[,1])
-hat_beta2_perf_sce2 <- cbind(hat_par_perf_sce2$hat_beta_npp[,2],
-                             hat_par_perf_sce2$hat_beta_nppseq[,2],
-                             hat_par_perf_sce2$hat_beta_onpp[,2],
-                             hat_par_perf_sce2$hat_beta_onppseq[,2])
-hat_beta3_perf_sce2 <- cbind(hat_par_perf_sce2$hat_beta_npp[,3],
-                             hat_par_perf_sce2$hat_beta_nppseq[,3],
-                             hat_par_perf_sce2$hat_beta_onpp[,3],
-                             hat_par_perf_sce2$hat_beta_onppseq[,3])
-hat_sigma_perf_sce2 <- cbind(hat_par_perf_sce2$hat_sigma_npp[,1],
-                             hat_par_perf_sce2$hat_sigma_nppseq[,1],
-                             hat_par_perf_sce2$hat_sigma_onpp[,1],
-                             hat_par_perf_sce2$hat_sigma_onppseq[,1])
+hat_par_inc_sce <- get_hat_par(sample_inc_sce)
+hat_delta1_inc_sce <- cbind(hat_par_inc_sce$hat_delta_npp[,1], 
+                             hat_par_inc_sce$hat_delta_nppseq[,1],
+                             hat_par_inc_sce$hat_delta_onpp[,1],
+                             hat_par_inc_sce$hat_delta_onppseq[,1])
+hat_delta2_inc_sce <- cbind(hat_par_inc_sce$hat_delta_npp[,2],
+                             hat_par_inc_sce$hat_delta_nppseq[,2],
+                             hat_par_inc_sce$hat_delta_onpp[,2],
+                             hat_par_inc_sce$hat_delta_onppseq[,2])
+hat_delta3_inc_sce <- cbind(hat_par_inc_sce$hat_delta_npp[,3],
+                             hat_par_inc_sce$hat_delta_nppseq[,3],
+                             hat_par_inc_sce$hat_delta_onpp[,3],
+                             hat_par_inc_sce$hat_delta_onppseq[,3])
+hat_beta1_inc_sce <- cbind(hat_par_inc_sce$hat_beta_npp[,1],
+                            hat_par_inc_sce$hat_beta_nppseq[,1],
+                            hat_par_inc_sce$hat_beta_onpp[,1],
+                            hat_par_inc_sce$hat_beta_onppseq[,1])
+hat_beta2_inc_sce <- cbind(hat_par_inc_sce$hat_beta_npp[,2],
+                            hat_par_inc_sce$hat_beta_nppseq[,2],
+                            hat_par_inc_sce$hat_beta_onpp[,2],
+                            hat_par_inc_sce$hat_beta_onppseq[,2])
+hat_beta3_inc_sce <- cbind(hat_par_inc_sce$hat_beta_npp[,3],
+                            hat_par_inc_sce$hat_beta_nppseq[,3],
+                            hat_par_inc_sce$hat_beta_onpp[,3],
+                            hat_par_inc_sce$hat_beta_onppseq[,3])
+hat_sigma_inc_sce <- cbind(hat_par_inc_sce$hat_sigma_npp[,1],
+                            hat_par_inc_sce$hat_sigma_nppseq[,1],
+                            hat_par_inc_sce$hat_sigma_onpp[,1],
+                            hat_par_inc_sce$hat_sigma_onppseq[,1])
 # Plotting
-prior_sample_delta_perf_sec2$component <- 
-  factor(prior_sample_delta_perf_sec2$component,
-         levels = c("delta1", "delta2", "delta3"),
-         labels = c("delta[1]", "delta[2]", "delta[3]"))
-dens_prior_delta_perf_sce2 <- ggplot(prior_sample_delta_perf_sec2, 
-                                  aes(x = value)) +
-  geom_density(fill = "steelblue", alpha = 0.5) +
-  facet_wrap(~component, 
-             scales = "free",
-             labeller = label_parsed
-             ) +
-  theme_bw() +
-  labs(title = "",
-       x = "",
-       y = expression(pi[0](delta)))
-box_delta1_perf_sce2 <- plot_boxplot(hat_delta1_perf_sce2, 
-                                     expression(hat(delta)[1]))
-box_delta2_perf_sce2 <- plot_boxplot(hat_delta2_perf_sce2,
-                                     expression(hat(delta)[2]))
-box_delta3_perf_sce2 <- plot_boxplot(hat_delta3_perf_sce2,
-                                     expression(hat(delta)[3]))
-box_beta1_perf_sce2 <- plot_boxplot(hat_beta1_perf_sce2, 
-                                      expression(hat(beta)[1])) +
-  geom_hline(yintercept = sce1_data[[1]]$beta[1],
+box_delta1_inc_sce <- plot_boxplot(hat_delta1_inc_sce, 
+                                    expression(hat(delta)[1]))
+box_delta2_inc_sce <- plot_boxplot(hat_delta2_inc_sce,
+                                    expression(hat(delta)[2]))
+box_delta3_inc_sce <- plot_boxplot(hat_delta3_inc_sce,
+                                    expression(hat(delta)[3]))
+box_beta1_inc_sce <- plot_boxplot(hat_beta1_inc_sce,
+                                   expression(hat(beta)[1])) + 
+  geom_hline(yintercept = inc_sce_data[[1]]$beta[1],
              color = "red", linetype = "dashed", size = 1)
-box_beta2_perf_sce2 <- plot_boxplot(hat_beta2_perf_sce2, 
-                                      expression(hat(beta)[2])) +
-  geom_hline(yintercept = sce1_data[[1]]$beta[2],
+box_beta2_inc_sce <- plot_boxplot(hat_beta2_inc_sce,
+                                   expression(hat(beta)[2])) +
+  geom_hline(yintercept = inc_sce_data[[1]]$beta[2],
              color = "red", linetype = "dashed", size = 1)
-box_beta3_perf_sce2 <- plot_boxplot(hat_beta3_perf_sce2, 
-                                      expression(hat(beta)[3])) +
-  geom_hline(yintercept = sce1_data[[1]]$beta[3],
+box_beta3_inc_sce <- plot_boxplot(hat_beta3_inc_sce,
+                                   expression(hat(beta)[3])) +
+  geom_hline(yintercept = inc_sce_data[[1]]$beta[3],
              color = "red", linetype = "dashed", size = 1)
-box_sigma_perf_sce2 <- plot_boxplot(hat_sigma_perf_sce2, 
-                                      expression(hat(sigma^2))) +
-  geom_hline(yintercept = sce1_data[[1]]$sg,
+box_sigma_inc_sce <- plot_boxplot(hat_sigma_inc_sce,
+                                   expression(hat(sigma^2))) +
+  geom_hline(yintercept = inc_sce_data[[1]]$sg,
              color = "red", linetype = "dashed", size = 1)
 # save plots
-ggsave("results/figures/lm_sim/perf_sce2/dens_prior_delta_perf_sce2.png", 
-       plot = dens_prior_delta_perf_sce2, 
-       width = 12, height = 6)
-ggsave("results/figures/lm_sim/perf_sce2/perf_sce2_delta1.png", 
-       plot = box_delta1_perf_sce2, 
+ggsave("results/figures/lm_sim/inc_sce/inc_sce_delta1.pdf",
+       plot = box_delta1_inc_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce2/perf_sce2_delta2.png",
-       plot = box_delta2_perf_sce2, 
+ggsave("results/figures/lm_sim/inc_sce/inc_sce_delta2.pdf",
+       plot = box_delta2_inc_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce2/perf_sce2_delta3.png",
-       plot = box_delta3_perf_sce2, 
+ggsave("results/figures/lm_sim/inc_sce/inc_sce_delta3.pdf",
+       plot = box_delta3_inc_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce2/perf_sce2_beta1.png",
-       plot = box_beta1_perf_sce2, 
+ggsave("results/figures/lm_sim/inc_sce/inc_sce_beta1.pdf",
+       plot = box_beta1_inc_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce2/perf_sce2_beta2.png",
-       plot = box_beta2_perf_sce2, 
+ggsave("results/figures/lm_sim/inc_sce/inc_sce_beta2.pdf",
+       plot = box_beta2_inc_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce2/perf_sce2_beta3.png",
-       plot = box_beta3_perf_sce2, 
+ggsave("results/figures/lm_sim/inc_sce/inc_sce_beta3.pdf",
+       plot = box_beta3_inc_sce, 
        width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce2/perf_sce2_sigma.png",
-       plot = box_sigma_perf_sce2, 
+ggsave("results/figures/lm_sim/inc_sce/inc_sce_sigma.pdf",
+       plot = box_sigma_inc_sce, 
        width = 8, height = 6)
-
-
-# Plot stuff for perfect scenario 3
-hat_par_perf_sce3 <- get_hat_par(sample_perf_sce3)
-
-hat_delta1_perf_sce3 <- cbind(hat_par_perf_sce3$hat_delta_npp[,1],
-                              hat_par_perf_sce3$hat_delta_nppseq[,1],
-                              hat_par_perf_sce3$hat_delta_onpp[,1],
-                              hat_par_perf_sce3$hat_delta_onppseq[,1])
-hat_delta2_perf_sce3 <- cbind(hat_par_perf_sce3$hat_delta_npp[,2],
-                              hat_par_perf_sce3$hat_delta_nppseq[,2],
-                              hat_par_perf_sce3$hat_delta_onpp[,2],
-                              hat_par_perf_sce3$hat_delta_onppseq[,2])
-hat_delta3_perf_sce3 <- cbind(hat_par_perf_sce3$hat_delta_npp[,3],
-                              hat_par_perf_sce3$hat_delta_nppseq[,3],
-                              hat_par_perf_sce3$hat_delta_onpp[,3],
-                              hat_par_perf_sce3$hat_delta_onppseq[,3])
-hat_beta1_perf_sce3 <- cbind(hat_par_perf_sce3$hat_beta_npp[,1],
-                             hat_par_perf_sce3$hat_beta_nppseq[,1],
-                             hat_par_perf_sce3$hat_beta_onpp[,1],
-                             hat_par_perf_sce3$hat_beta_onppseq[,1])
-hat_beta2_perf_sce3 <- cbind(hat_par_perf_sce3$hat_beta_npp[,2],
-                             hat_par_perf_sce3$hat_beta_nppseq[,2],
-                             hat_par_perf_sce3$hat_beta_onpp[,2],
-                             hat_par_perf_sce3$hat_beta_onppseq[,2])
-hat_beta3_perf_sce3 <- cbind(hat_par_perf_sce3$hat_beta_npp[,3],
-                             hat_par_perf_sce3$hat_beta_nppseq[,3],
-                             hat_par_perf_sce3$hat_beta_onpp[,3],
-                             hat_par_perf_sce3$hat_beta_onppseq[,3])
-hat_sigma_perf_sce3 <- cbind(hat_par_perf_sce3$hat_sigma_npp[,1],
-                             hat_par_perf_sce3$hat_sigma_nppseq[,1],
-                             hat_par_perf_sce3$hat_sigma_onpp[,1],
-                             hat_par_perf_sce3$hat_sigma_onppseq[,1])
-
-# Plotting
-box_delta1_perf_sce3 <- plot_boxplot(hat_delta1_perf_sce3, 
-                                     expression(hat(delta)[1]))
-box_delta2_perf_sce3 <- plot_boxplot(hat_delta2_perf_sce3,
-                                     expression(hat(delta)[2]))
-box_delta3_perf_sce3 <- plot_boxplot(hat_delta3_perf_sce3,
-                                     expression(hat(delta)[3]))
-box_beta1_perf_sce3 <- plot_boxplot(hat_beta1_perf_sce3, 
-                                      expression(hat(beta)[1])) +
-  geom_hline(yintercept = sce2_data[[1]]$beta[1],
-             color = "red", linetype = "dashed", size = 1)
-box_beta2_perf_sce3 <- plot_boxplot(hat_beta2_perf_sce3, 
-                                      expression(hat(beta)[2])) +
-  geom_hline(yintercept = sce2_data[[1]]$beta[2],
-             color = "red", linetype = "dashed", size = 1)
-box_beta3_perf_sce3 <- plot_boxplot(hat_beta3_perf_sce3, 
-                                      expression(hat(beta)[3])) +
-  geom_hline(yintercept = sce2_data[[1]]$beta[3],
-             color = "red", linetype = "dashed", size = 1)
-box_sigma_perf_sce3 <- plot_boxplot(hat_sigma_perf_sce3, 
-                                      expression(hat(sigma^2))) +
-  geom_hline(yintercept = sce2_data[[1]]$sg,
-             color = "red", linetype = "dashed", size = 1)
-
-# save plots
-ggsave("results/figures/lm_sim/perf_sce3/perf_sce3_delta1.png", 
-       plot = box_delta1_perf_sce3, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce3/perf_sce3_delta2.png",
-       plot = box_delta2_perf_sce3, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce3/perf_sce3_delta3.png",
-       plot = box_delta3_perf_sce3, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce3/perf_sce3_beta1.png",
-       plot = box_beta1_perf_sce3, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce3/perf_sce3_beta2.png",
-       plot = box_beta2_perf_sce3, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce3/perf_sce3_beta3.png",
-       plot = box_beta3_perf_sce3, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce3/perf_sce3_sigma.png",
-       plot = box_sigma_perf_sce3, 
-       width = 8, height = 6)
-
-
-# plot stuff for perfect scenario 4
-hat_par_perf_sce4 <- get_hat_par(sample_perf_sce4)
-
-hat_delta1_perf_sce4 <- cbind(hat_par_perf_sce4$hat_delta_npp[,1],
-                              hat_par_perf_sce4$hat_delta_nppseq[,1],
-                              hat_par_perf_sce4$hat_delta_onpp[,1],
-                              hat_par_perf_sce4$hat_delta_onppseq[,1])
-hat_delta2_perf_sce4 <- cbind(hat_par_perf_sce4$hat_delta_npp[,2],
-                              hat_par_perf_sce4$hat_delta_nppseq[,2],
-                              hat_par_perf_sce4$hat_delta_onpp[,2],
-                              hat_par_perf_sce4$hat_delta_onppseq[,2])
-hat_delta3_perf_sce4 <- cbind(hat_par_perf_sce4$hat_delta_npp[,3],
-                              hat_par_perf_sce4$hat_delta_nppseq[,3],
-                              hat_par_perf_sce4$hat_delta_onpp[,3],
-                              hat_par_perf_sce4$hat_delta_onppseq[,3])
-hat_beta1_perf_sce4 <- cbind(hat_par_perf_sce4$hat_beta_npp[,1],
-                             hat_par_perf_sce4$hat_beta_nppseq[,1],
-                             hat_par_perf_sce4$hat_beta_onpp[,1],
-                             hat_par_perf_sce4$hat_beta_onppseq[,1])
-hat_beta2_perf_sce4 <- cbind(hat_par_perf_sce4$hat_beta_npp[,2],
-                             hat_par_perf_sce4$hat_beta_nppseq[,2],
-                             hat_par_perf_sce4$hat_beta_onpp[,2],
-                             hat_par_perf_sce4$hat_beta_onppseq[,2])
-hat_beta3_perf_sce4 <- cbind(hat_par_perf_sce4$hat_beta_npp[,3],
-                             hat_par_perf_sce4$hat_beta_nppseq[,3],
-                             hat_par_perf_sce4$hat_beta_onpp[,3],
-                             hat_par_perf_sce4$hat_beta_onppseq[,3])
-hat_sigma_perf_sce4 <- cbind(hat_par_perf_sce4$hat_sigma_npp[,1],
-                             hat_par_perf_sce4$hat_sigma_nppseq[,1],
-                             hat_par_perf_sce4$hat_sigma_onpp[,1],
-                             hat_par_perf_sce4$hat_sigma_onppseq[,1])
-
-# Plotting
-box_delta1_perf_sce4 <- plot_boxplot(hat_delta1_perf_sce4, 
-                                     expression(hat(delta)[1]))
-box_delta2_perf_sce4 <- plot_boxplot(hat_delta2_perf_sce4,
-                                     expression(hat(delta)[2]))
-box_delta3_perf_sce4 <- plot_boxplot(hat_delta3_perf_sce4,
-                                     expression(hat(delta)[3]))
-box_beta1_perf_sce4 <- plot_boxplot(hat_beta1_perf_sce4, 
-                                      expression(hat(beta)[1])) +
-  geom_hline(yintercept = sce2_data[[1]]$beta[1],
-             color = "red", linetype = "dashed", size = 1)
-box_beta2_perf_sce4 <- plot_boxplot(hat_beta2_perf_sce4, 
-                                      expression(hat(beta)[2])) +
-  geom_hline(yintercept = sce2_data[[1]]$beta[2],
-             color = "red", linetype = "dashed", size = 1)
-box_beta3_perf_sce4 <- plot_boxplot(hat_beta3_perf_sce4, 
-                                      expression(hat(beta)[3])) +
-  geom_hline(yintercept = sce2_data[[1]]$beta[3],
-             color = "red", linetype = "dashed", size = 1)
-box_sigma_perf_sce4 <- plot_boxplot(hat_sigma_perf_sce4, 
-                                      expression(hat(sigma^2))) +
-  geom_hline(yintercept = sce2_data[[1]]$sg,
-             color = "red", linetype = "dashed", size = 1)
-
-# save plots
-ggsave("results/figures/lm_sim/perf_sce4/perf_sce4_delta1.png", 
-       plot = box_delta1_perf_sce4, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce4/perf_sce4_delta2.png",
-       plot = box_delta2_perf_sce4, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce4/perf_sce4_delta3.png",
-       plot = box_delta3_perf_sce4, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce4/perf_sce4_beta1.png",
-       plot = box_beta1_perf_sce4, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce4/perf_sce4_beta2.png",
-       plot = box_beta2_perf_sce4, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce4/perf_sce4_beta3.png",
-       plot = box_beta3_perf_sce4, 
-       width = 8, height = 6)
-ggsave("results/figures/lm_sim/perf_sce4/perf_sce4_sigma.png",
-       plot = box_sigma_perf_sce4, 
-       width = 8, height = 6)
-
-
-
-
-
-
-
-
-
-
 
 
 

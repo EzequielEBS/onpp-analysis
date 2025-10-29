@@ -8,6 +8,66 @@ library(dplyr)
 library(tidyverse)
 library(posterior)
 library(patchwork)
+library(hdbayes)
+
+hist1 <- actg019[1:300,]
+hist2 <- actg019[301:600,]
+hist3 <- actg019[601:nrow(actg019),]
+current <- actg036
+
+data.list <- list(current, hist1, hist2, hist3)
+formula <- outcome ~ age + treatment + cd4
+family <- binomial(link = "logit")
+
+a0s <- seq(0,1, length.out = 21)
+lognc <- function(a0, 
+                  ...) {
+  hdbayes::glm.npp.lognc(formula = formula,
+                         family = family,
+                         a0 = a0,
+                         ...)
+}
+lognc1 <- lapply(a0s, FUN = lognc,
+                 histdata = hist1,
+                 iter_warmup = 1000,
+                 iter_sampling = 2500,
+                 chains = 4,
+                 parallel_chains = 4,
+                 refresh = 0
+                )
+lognc2 <- lapply(a0s, FUN = lognc,
+                 histdata = hist2,
+                 iter_warmup = 1000,
+                 iter_sampling = 2500,
+                 chains = 4,
+                 parallel_chains = 4,
+                 refresh = 0
+)
+lognc3 <- lapply(a0s, FUN = lognc,
+                 histdata = hist3,
+                 iter_warmup = 1000,
+                 iter_sampling = 2500,
+                 chains = 4,
+                 parallel_chains = 4,
+                 refresh = 0
+)
+
+lognc1 <- data.frame(do.call(rbind, lognc1))
+lognc2 <- data.frame(do.call(rbind, lognc2))
+lognc3 <- data.frame(do.call(rbind, lognc3))
+
+fit <- glm.onpp(
+  formula = formula,
+  family = family,
+  data.list = data.list,
+  a0.lognc = lognc1$a0,
+  lognc = matrix(c(lognc1$lognc, lognc2$lognc, lognc3$lognc), ncol = 3),
+  chains = 4, iter_warmup = 1000, iter_sampling = 2500, parallel_chains = 4,
+  refresh = 0
+)
+
+
+source("code/glm_onpp.R")
 
 # Compile the model
 gamma_model_bin <- cmdstan_model("code/gamma_bin.stan")
