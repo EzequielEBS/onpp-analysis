@@ -99,13 +99,13 @@ sample_sce_bin <- function(par_list, gamma_model, delta_model){
                                                 adapt_delta = 0.98,
                                                 refresh = 0
   )
-  # save output files
-  save_dir <- "results/cmdstan_outputs"
-  if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-  sample_delta_npp$save_output_files(dir = save_dir)
-  sample_delta_nppseq$save_output_files(dir = save_dir)
-  sample_delta_onpp$save_output_files(dir = save_dir)
-  sample_delta_onppseq$save_output_files(dir = save_dir)
+  # # save output files
+  # save_dir <- "results/cmdstan_outputs"
+  # if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
+  # sample_delta_npp$save_output_files(dir = save_dir)
+  # sample_delta_nppseq$save_output_files(dir = save_dir)
+  # sample_delta_onpp$save_output_files(dir = save_dir)
+  # sample_delta_onppseq$save_output_files(dir = save_dir)
   
   # get diagnostics
   diagnostics_onpp <- sample_delta_onpp$sampler_diagnostics()
@@ -238,7 +238,6 @@ sample_sce_poi <- function(par_list, gamma_model, delta_model){
   # sample from the models
   sample_delta_onpp <- gamma_model$sample(data = data_onpp, 
                                           chains = 4, 
-                                          parallel_chains = 4, 
                                           iter_warmup = 2000, 
                                           iter_sampling = 2000,
                                           adapt_delta = 0.98,
@@ -246,7 +245,6 @@ sample_sce_poi <- function(par_list, gamma_model, delta_model){
   )
   sample_delta_onppseq <- gamma_model$sample(data = data_onppseq, 
                                              chains = 4, 
-                                             parallel_chains = 4, 
                                              iter_warmup = 2000, 
                                              iter_sampling = 2000,
                                              adapt_delta = 0.98,
@@ -254,27 +252,25 @@ sample_sce_poi <- function(par_list, gamma_model, delta_model){
   )
   sample_delta_npp <- delta_model$sample(data = data_npp, 
                                          chains = 4, 
-                                         parallel_chains = 4, 
                                          iter_warmup = 2000, 
                                          iter_sampling = 2000,
                                          adapt_delta = 0.98,
                                          refresh = 0
   )
   sample_delta_nppseq <- delta_model$sample(data = data_nppseq, 
-                                            chains = 4, 
-                                            parallel_chains = 4, 
+                                            chains = 4,  
                                             iter_warmup = 2000, 
                                             iter_sampling = 2000,
                                             adapt_delta = 0.98,
                                             refresh = 0
   )
-  # save output files
-  save_dir <- "results/cmdstan_outputs"
-  if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-  sample_delta_npp$save_output_files(dir = save_dir)
-  sample_delta_nppseq$save_output_files(dir = save_dir)
-  sample_delta_onpp$save_output_files(dir = save_dir)
-  sample_delta_onppseq$save_output_files(dir = save_dir)
+  # # save output files
+  # save_dir <- "results/cmdstan_outputs"
+  # if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
+  # sample_delta_npp$save_output_files(dir = save_dir)
+  # sample_delta_nppseq$save_output_files(dir = save_dir)
+  # sample_delta_onpp$save_output_files(dir = save_dir)
+  # sample_delta_onppseq$save_output_files(dir = save_dir)
   
   # get diagnostics
   diagnostics_onpp <- sample_delta_onpp$sampler_diagnostics()
@@ -465,6 +461,35 @@ compute_bci <- function(list_draws, alpha){
   ))
 }
 
+plot_sce_bin <- function(j) {
+  sim <- sim_sces[[j]]
+  plots_delta <- lapply(seq_along(sim$hatdelta), function(i) {
+    plot <- plot_boxplot(sim$hatdelta[[i]], bquote(hat(delta)[.(i)])) + coord_flip()
+    if (i>1) {
+      plot <- plot + scale_x_discrete(labels = NULL)
+    }
+    return(plot)
+  })
+  plot_theta <- plot_boxplot(sim$hattheta, expression(hat(theta))) + 
+    geom_hline(yintercept = true_value, linetype = "dotted", color = "red", size = 1) +
+    coord_flip()
+  # Combine plots
+  plot <- Reduce(`+`, plots_delta) + plot_theta + plot_layout(ncol = length(plots_delta) + 1) + 
+    scale_x_discrete(labels = NULL)
+  sce <- as.roman(ceiling(i/3))
+  sce <- ifelse(i %% 3 == 1, paste0(sce,"_I"), ifelse(i %% 3 == 2, paste0(sce,"_II"), paste0(sce,"_III")))
+  ggsave(paste0("results/figures/bin/box_sim_", sce, "_bin.pdf"), plot, width = 10, height = 4, dpi = 300)
+  return(plot)
+}
+sim <- sim1.1
+plots_delta <- lapply(seq_along(sim$hatdelta), function(i) {
+  plot <- plot_boxplot(sim$hatdelta[[i]], bquote(hat(delta)[.(i)])) + coord_flip()
+  if (i>1) {
+    plot <- plot + scale_x_discrete(labels = NULL)
+  }
+  return(plot)
+})
+
 # function to compute coverage
 compute_coverage <- function(bcis, true_theta) {
   coverage_npp <- sum(sapply(bcis$bci_npp, function(x) x[1] <= true_theta & true_theta <= x[2]))/
@@ -479,6 +504,48 @@ compute_coverage <- function(bcis, true_theta) {
               coverage_nppseq = coverage_nppseq,
               coverage_onpp = coverage_onpp,
               coverage_onppseq = coverage_onppseq
+  ))
+}
+
+compute_avg_len <- function(bcis) {
+  bcis_npp <- do.call(rbind,bcis$bci_npp)
+  bcis_nppseq <- do.call(rbind,bcis$bci_nppseq)
+  bcis_onpp <- do.call(rbind,bcis$bci_onpp)
+  bcis_onppseq <- do.call(rbind,bcis$bci_onppseq)
+  return(list(
+    npp = mean(bcis_npp[,2] - bcis_npp[,1]),
+    nppseq = mean(bcis_nppseq[,2] - bcis_nppseq[,1]),
+    onpp = mean(bcis_onpp[,2] - bcis_onpp[,1]),
+    onppseq = mean(bcis_onppseq[,2] - bcis_onppseq[,1])
+  ))
+}
+
+compute_wis <- function(list_draws, quantile_level, true_value) {
+  N <- length(list_draws)
+  q_npp <- do.call(rbind,
+                   lapply(list_draws, function(x) quantile(x$theta_npp, 
+                                                           probs = quantile_level))
+  )
+  q_nppseq <- do.call(rbind,
+                      lapply(list_draws, function(x) quantile(x$theta_nppseq, 
+                                                              probs = quantile_level))
+  )
+  q_onpp <- do.call(rbind,
+                    lapply(list_draws, function(x) quantile(x$theta_onpp,
+                                                            probs = quantile_level))
+  )
+  q_onppseq <- do.call(rbind,
+                       lapply(list_draws, function(x) quantile(x$theta_onppseq,
+                                                               probs = quantile_level))
+  )
+  wis_npp <- wis(rep(true_value, N), q_npp, quantile_level)
+  wis_nppseq <- wis(rep(true_value, N), q_nppseq, quantile_level)
+  wis_onpp <- wis(rep(true_value, N), q_onpp, quantile_level)
+  wis_onppseq <- wis(rep(true_value, N), q_onppseq, quantile_level)
+  return(list(hat_wis_npp = mean(wis_npp),
+              hat_wis_nppseq = mean(wis_nppseq),
+              hat_wis_onpp = mean(wis_onpp),
+              hat_wis_onppseq = mean(wis_onppseq)
   ))
 }
 

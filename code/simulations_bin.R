@@ -1,5 +1,3 @@
-setwd("C:/Users/Ezequiel/OneDrive - Fundacao Getulio Vargas - FGV/MSC_MAp_CD/onpp-analysis")
-
 # Load libraries
 library(cmdstanr)
 library(bayesplot)
@@ -15,75 +13,122 @@ library(latex2exp)
 source("code/aux_fun_sim.R")
 
 # Compile the model
-gamma_model_bin <- cmdstan_model("code/gamma_bin.stan")
-delta_model_bin <- cmdstan_model("code/delta_bin.stan")
+gamma_model_bin <- cmdstan_model("code/models/gamma_bin.stan")
+delta_model_bin <- cmdstan_model("code/models/delta_bin.stan")
 
 #-------------------------------------------------------------------------------
 # Run simulations for the binomial model with different scenarios
 #-------------------------------------------------------------------------------
 
 # define scenarios
-sce1 <- list(n0 = c(30, 30, 30),
+## compatible order
+### compatible order and high congruence
+sce1.1 <- list(n0 = c(30, 30, 30),
               n = 30,
               a = 1/2,
               b = 1/2,
               al = 1/2,
               bl = 1/2,
-              theta0 = c(0.15, 0.3, 0.45),
+              theta0 = c(0.3, 0.4, 0.5),
               theta = 0.5,
               alpha = rep(1/4, 4)
 )
-sce2 <- list(n0 = c(30, 30, 30),
+### compatible order and small congruence
+sce1.2 <- list(n0 = c(30, 30, 30),
              n = 30,
              a = 1/2,
              b = 1/2,
              al = 1/2,
              bl = 1/2,
-             theta0 = c(0.2, 0.7, 0.4),
+             theta0 = c(0.2, 0.3, 0.4),
              theta = 0.5,
              alpha = rep(1/4, 4)
 )
-sce3 <- list(n0 = c(30, 30, 30),
+### compatible order and no congruence 
+sce1.3 <- list(n0 = c(30, 30, 30),
              n = 30,
              a = 1/2,
              b = 1/2,
              al = 1/2,
              bl = 1/2,
-             theta0 = c(0.15, 0.85, 0.5),
+             theta0 = c(0.05, 0.15, 0.25),
              theta = 0.5,
              alpha = rep(1/4, 4)
 )
-sce4 <- list(n0 = c(30, 30, 30),
+
+## almost compatible order
+### almost compatible order and high congruence
+sce2.1 <- list(n0 = c(30, 30, 30),
              n = 30,
              a = 1/2,
              b = 1/2,
              al = 1/2,
              bl = 1/2,
-             theta0 = c(0.4, 0.4, 0.4),
+             theta0 = c(0.3, 0.5, 0.4),
              theta = 0.5,
              alpha = rep(1/4, 4)
 )
-sce5 <- list(n0 = c(30, 30, 30),
+### almost compatible order and small congruence
+sce2.2 <- list(n0 = c(30, 30, 30),
              n = 30,
              a = 1/2,
              b = 1/2,
              al = 1/2,
              bl = 1/2,
-             theta0 = c(0.1, 0.1, 0.1),
+             theta0 = c(0.2, 0.4, 0.3),
              theta = 0.5,
              alpha = rep(1/4, 4)
 )
-sce6 <- list(n0 = c(30, 30, 30),
+### almost compatible order and no congruence
+sce2.3 <- list(n0 = c(30, 30, 30),
              n = 30,
              a = 1/2,
              b = 1/2,
              al = 1/2,
              bl = 1/2,
-             theta0 = c(0.35, 0.2, 0.05),
+             theta0 = c(0.05, 0.25, 0.15),
              theta = 0.5,
              alpha = rep(1/4, 4)
 )
-sce7 <- list(n0 = c(30, 30, 30),
+
+## incompatible order
+### incompatible order and huge congruence
+sce3.1 <- list(n0 = c(30, 30, 30),
+             n = 30,
+             a = 1/2,
+             b = 1/2,
+             al = 1/2,
+             bl = 1/2,
+             theta0 = c(0.5, 0.4, 0.3),
+             theta = 0.5,
+             alpha = rep(1/4, 4)
+)
+### incompatible order and small congruence
+sce3.2 <- list(n0 = c(30, 30, 30),
+             n = 30,
+             a = 1/2,
+             b = 1/2,
+             al = 1/2,
+             bl = 1/2,
+             theta0 = c(0.4, 0.3, 0.2),
+             theta = 0.5,
+             alpha = rep(1/4, 4)
+)
+### incompatible order and no congruence
+sce3.3 <- list(n0 = c(30, 30, 30),
+             n = 30,
+             a = 1/2,
+             b = 1/2,
+             al = 1/2,
+             bl = 1/2,
+             theta0 = c(0.25, 0.15, 0.05),
+             theta = 0.5,
+             alpha = rep(1/4, 4)
+)
+
+## neutral order
+### neutral order and huge congruence
+sce4.1 <- list(n0 = c(30, 30, 30),
              n = 30,
              a = 1/2,
              b = 1/2,
@@ -93,24 +138,58 @@ sce7 <- list(n0 = c(30, 30, 30),
              theta = 0.5,
              alpha = rep(1/4, 4)
 )
+### neutral order and small congruence
+sce4.2 <- list(n0 = c(30, 30, 30),
+             n = 30,
+             a = 1/2,
+             b = 1/2,
+             al = 1/2,
+             bl = 1/2,
+             theta0 = c(0.3, 0.3, 0.3),
+             theta = 0.5,
+             alpha = rep(1/4, 4)
+)
+### neutral order and no congruence
+sce4.3 <- list(n0 = c(30, 30, 30),
+             n = 30,
+             a = 1/2,
+             b = 1/2,
+             al = 1/2,
+             bl = 1/2,
+             theta0 = c(0.1, 0.1, 0.1),
+             theta = 0.5,
+             alpha = rep(1/4, 4)
+)
 
 # run simulations
-sim1 <- sim_sce(model = "bin",14, 200, sce1, gamma_model_bin, delta_model_bin)
-sim2 <- sim_sce(model = "bin",14, 200, sce2, gamma_model_bin, delta_model_bin)
-sim3 <- sim_sce(model = "bin",14, 200, sce3, gamma_model_bin, delta_model_bin)
-sim4 <- sim_sce(model = "bin",14, 200, sce4, gamma_model_bin, delta_model_bin)
-sim5 <- sim_sce(model = "bin",14, 200, sce5, gamma_model_bin, delta_model_bin)
-sim6 <- sim_sce(model = "bin",14, 200, sce6, gamma_model_bin, delta_model_bin)
-sim7 <- sim_sce(model = "bin",14, 200, sce7, gamma_model_bin, delta_model_bin)
+sim1.1 <- sim_sce(model = "bin",14, 200, sce1.1, gamma_model_bin, delta_model_bin)
+sim1.2 <- sim_sce(model = "bin",14, 200, sce1.2, gamma_model_bin, delta_model_bin)
+sim1.3 <- sim_sce(model = "bin",14, 200, sce1.3, gamma_model_bin, delta_model_bin)
+sim2.1 <- sim_sce(model = "bin",14, 200, sce2.1, gamma_model_bin, delta_model_bin)
+sim2.2 <- sim_sce(model = "bin",14, 200, sce2.2, gamma_model_bin, delta_model_bin)
+sim2.3 <- sim_sce(model = "bin",14, 200, sce2.3, gamma_model_bin, delta_model_bin)
+sim3.1 <- sim_sce(model = "bin",14, 200, sce3.1, gamma_model_bin, delta_model_bin)
+sim3.2 <- sim_sce(model = "bin",14, 200, sce3.2, gamma_model_bin, delta_model_bin)
+sim3.3 <- sim_sce(model = "bin",14, 200, sce3.3, gamma_model_bin, delta_model_bin)
+sim4.1 <- sim_sce(model = "bin",14, 200, sce4.1, gamma_model_bin, delta_model_bin)
+sim4.2 <- sim_sce(model = "bin",14, 200, sce4.2, gamma_model_bin, delta_model_bin)
+sim4.3 <- sim_sce(model = "bin",14, 200, sce4.3, gamma_model_bin, delta_model_bin)
+
+
 
 # save results
-save(sim1, file = "results/sim1_bin.RData")
-save(sim2, file = "results/sim2_bin.RData")
-save(sim3, file = "results/sim3_bin.RData")
-save(sim4, file = "results/sim4_bin.RData")
-save(sim5, file = "results/sim5_bin.RData")
-save(sim6, file = "results/sim6_bin.RData")
-save(sim7, file = "results/sim7_bin.RData")
+save(sim1.1, file = "results/bin/sim1_1_bin.RData")
+save(sim1.2, file = "results/bin/sim1_2_bin.RData")
+save(sim1.3, file = "results/bin/sim1_3_bin.RData")
+save(sim2.1, file = "results/bin/sim2_1_bin.RData")
+save(sim2.2, file = "results/bin/sim2_2_bin.RData")
+save(sim2.3, file = "results/bin/sim2_3_bin.RData")
+save(sim3.1, file = "results/bin/sim3_1_bin.RData")
+save(sim3.2, file = "results/bin/sim3_2_bin.RData")
+save(sim3.3, file = "results/bin/sim3_3_bin.RData")
+save(sim4.1, file = "results/bin/sim4_1_bin.RData")
+save(sim4.2, file = "results/bin/sim4_2_bin.RData")
+save(sim4.3, file = "results/bin/sim4_3_bin.RData")
 
 #-------------------------------------------------------------------------------
 # Run simulations for the binomial model with predefined data
