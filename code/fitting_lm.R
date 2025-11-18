@@ -1,6 +1,23 @@
 # Load data
-load("results/sim_data/perf_sce_lm_data.RData")
-load("results/sim_data/inc_sce_lm_data.RData")
+sim1.1 <- readRDS("results/sim_data/lm/sce_I_I.rds")
+sim1.2 <- readRDS("results/sim_data/lm/sce_I_II.rds")
+sim1.3 <- readRDS("results/sim_data/lm/sce_I_III.rds")
+sim2.1 <- readRDS("results/sim_data/lm/sce_II_I.rds")
+sim2.2 <- readRDS("results/sim_data/lm/sce_II_II.rds")
+sim2.3 <- readRDS("results/sim_data/lm/sce_II_III.rds")
+sim3.1 <- readRDS("results/sim_data/lm/sce_III_I.rds")
+sim3.2 <- readRDS("results/sim_data/lm/sce_III_II.rds")
+sim3.3 <- readRDS("results/sim_data/lm/sce_III_III.rds")
+sim4.1 <- readRDS("results/sim_data/lm/sce_IV_I.rds")
+sim4.2 <- readRDS("results/sim_data/lm/sce_IV_II.rds")
+sim4.3 <- readRDS("results/sim_data/lm/sce_IV_III.rds")
+
+sim_data_list <- list(
+  sim1.1, sim1.2, sim1.3,
+  sim2.1, sim2.2, sim2.3,
+  sim3.1, sim3.2, sim3.3,
+  sim4.1, sim4.2, sim4.3
+)
 
 # Load libraries
 library(cmdstanr)
@@ -143,7 +160,7 @@ fit_lm <- function(data, models, prior_parameters) {
   sample_delta_npp <- delta_model$sample(
     data = stan_data_npp,
     chains = 4,
-    parallel_chains = 4,
+    # parallel_chains = 4,
     iter_warmup = 4000,
     iter_sampling = 2000,
     refresh = 0,
@@ -153,7 +170,7 @@ fit_lm <- function(data, models, prior_parameters) {
   sample_delta_nppseq <- delta_model$sample(
     data = stan_data_nppseq,
     chains = 4,
-    parallel_chains = 4,
+    # parallel_chains = 4,
     iter_warmup = 4000,
     iter_sampling = 2000,
     refresh = 0,
@@ -163,7 +180,7 @@ fit_lm <- function(data, models, prior_parameters) {
   sample_delta_onpp <- gamma_model$sample(
     data = stan_data_onpp,
     chains = 4,
-    parallel_chains = 4,
+    # parallel_chains = 4,
     iter_warmup = 4000,
     iter_sampling = 2000,
     refresh = 0,
@@ -174,7 +191,7 @@ fit_lm <- function(data, models, prior_parameters) {
   sample_delta_onppseq <- gamma_model$sample(
     data = stan_data_onppseq,
     chains = 4,
-    parallel_chains = 4,
+    # parallel_chains = 4,
     iter_warmup = 4000,
     iter_sampling = 2000,
     refresh = 0,
@@ -206,6 +223,17 @@ fit_lm <- function(data, models, prior_parameters) {
     as_draws_matrix()
   draws_sigma_onppseq <- sample_delta_onppseq$draws(variables = "sigma") %>%
     as_draws_matrix()
+  
+  
+  divergences_npp <- sum(((sample_delta_npp$sampler_diagnostics())[, , "divergent__"] %>% 
+                            as_draws_df())$divergent__)
+  divergences_nppseq <- sum(((sample_delta_nppseq$sampler_diagnostics())[, , "divergent__"] %>% 
+                               as_draws_df())$divergent__)
+  divergences_onpp <- sum(((sample_delta_onpp$sampler_diagnostics())[, , "divergent__"] %>%
+                             as_draws_df())$divergent__)
+  divergences_onppseq <- sum(((sample_delta_onppseq$sampler_diagnostics())[, , "divergent__"] %>%
+                                as_draws_df())$divergent__)
+  
   return(list(
     draws_delta_npp = draws_delta_npp,
     draws_delta_nppseq = draws_delta_nppseq,
@@ -218,15 +246,19 @@ fit_lm <- function(data, models, prior_parameters) {
     draws_sigma_npp = draws_sigma_npp,
     draws_sigma_nppseq = draws_sigma_nppseq,
     draws_sigma_onpp = draws_sigma_onpp,
-    draws_sigma_onppseq = draws_sigma_onppseq
+    draws_sigma_onppseq = draws_sigma_onppseq,
+    divergences = c(divergences_npp,
+                     divergences_nppseq,
+                     divergences_onpp,
+                     divergences_onppseq)
   ))
 }
 
 
 # define prior parameters
-K <- length(perf_sce_data[[1]]$X0)
-p <- ncol(perf_sce_data[[1]]$X)
-perf_sce_hyper <- list(
+K <- length(sim1.1[[1]]$X0)
+p <- ncol(sim1.1[[1]]$X)
+hyper <- list(
   a = 2,
   b = 1,
   tilde_a = 1/2,
@@ -237,18 +269,20 @@ perf_sce_hyper <- list(
 )
 
 # Fitting datasets in parallel
-sample_perf_sce <- mclapply(perf_sce_data, function(data) {
-  fit_lm(data, 
-         list(gamma_model = gamma_model,
-              delta_model = delta_model),
-         perf_sce_hyper)
+samples_sces <- lapply(seq_along(sim_data_list), function(i) {
+  sce_data <- sim_data_list[[i]]
+  samples <- mclapply(sce_data, function(data) {
+    fit_lm(data, 
+           list(gamma_model = gamma_model,
+                delta_model = delta_model),
+           hyper)
+  },
+  mc.cores = 10)
+  sce <- as.roman(ceiling(i/3))
+  sce <- ifelse(i %% 3 == 1, paste0(sce,"_I"), ifelse(i %% 3 == 2, paste0(sce,"_II"), paste0(sce,"_III")))
+  saveRDS(samples, file = paste0("results/samples/lm/sce_", sce, ".rds"))
 })
-sample_inc_sce <- mclapply(inc_sce_data, function(data) {
-  fit_lm(data, 
-         list(gamma_model = gamma_model,
-              delta_model = delta_model),
-         perf_sce_hyper)
-})
+
 
 # Extract draws from the samples
 get_hat_par <- function(samples) {

@@ -476,19 +476,11 @@ plot_sce_bin <- function(j) {
   # Combine plots
   plot <- Reduce(`+`, plots_delta) + plot_theta + plot_layout(ncol = length(plots_delta) + 1) + 
     scale_x_discrete(labels = NULL)
-  sce <- as.roman(ceiling(i/3))
-  sce <- ifelse(i %% 3 == 1, paste0(sce,"_I"), ifelse(i %% 3 == 2, paste0(sce,"_II"), paste0(sce,"_III")))
+  sce <- as.roman(ceiling(j/3))
+  sce <- ifelse(j %% 3 == 1, paste0(sce,"_I"), ifelse(j %% 3 == 2, paste0(sce,"_II"), paste0(sce,"_III")))
   ggsave(paste0("results/figures/bin/box_sim_", sce, "_bin.pdf"), plot, width = 10, height = 4, dpi = 300)
   return(plot)
 }
-sim <- sim1.1
-plots_delta <- lapply(seq_along(sim$hatdelta), function(i) {
-  plot <- plot_boxplot(sim$hatdelta[[i]], bquote(hat(delta)[.(i)])) + coord_flip()
-  if (i>1) {
-    plot <- plot + scale_x_discrete(labels = NULL)
-  }
-  return(plot)
-})
 
 # function to compute coverage
 compute_coverage <- function(bcis, true_theta) {
