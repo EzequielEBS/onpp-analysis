@@ -258,9 +258,6 @@ transformed parameters {
   a0s = cumulative_sum(gamma[1:(K-1)]);
 }
 model {
-  // prior on beta
-  target += normal_lpdf(beta  | mean_beta, sd_beta);
-  
   target += gamma_lpdf(aux_gamma | alpha, 1);
   
   if ( dist <= 2 ) {
@@ -273,6 +270,8 @@ model {
       target += a0s[k-1] * glm_lp(y[ start_idx[k]:end_idx[k] ],
       beta, 1.0, X[ start_idx[k]:end_idx[k], ], dist, link,
       offs[ start_idx[k]:end_idx[k] ]); // power prior
+      // prior on beta
+      target += normal_lpdf(beta  | mean_beta, sd_beta);
     }
   }
   else {
@@ -286,6 +285,8 @@ model {
       target += a0s[k-1] * glm_lp(y[ start_idx[k]:end_idx[k] ],
       beta, dispersion[1], X[ start_idx[k]:end_idx[k], ], dist, link,
       offs[ start_idx[k]:end_idx[k] ]);  // power prior
+      // prior on beta
+      target += normal_lpdf(beta  | mean_beta, sd_beta);
     }
   }
   // target += -lognc_logit_a0s;

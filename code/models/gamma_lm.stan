@@ -122,53 +122,53 @@ model {
   // prior
   target += dirichlet_lpdf(gamma | alpha);
   
-  // Likelihood term 
-  if (post == 1){
-    if (seq == 1){
-      // Sequential method
-      for (k in 1:K){
-        target += nu0kstar[k] * log(H0kstar[k]) +
-              0.5*log_det_Lambda0kstar[k] -
-              lgamma(nu0kstar[k]);
-      }
-      target += -0.5*log_determinant(Lambdastar) -
-                nustar * log(Hstar) +
-                lgamma(nustar);
-    } else{
-      // posterior distribution
-      target += lgamma(n*0.5 + nu0) + 0.5 * log_determinant_spd(Lambda0) + 
-                nu0 * log(H0) - 0.5 * log_determinant_spd(Lambda) - lgamma(nu0) -
-                (nu0 + n*0.5) * log(H);
-    }
-  }
+  // // Likelihood term 
+  // if (post == 1){
+  //   if (seq == 1){
+  //     // Sequential method
+  //     for (k in 1:K){
+  //       target += nu0kstar[k] * log(H0kstar[k]) +
+  //             0.5*log_det_Lambda0kstar[k] -
+  //             lgamma(nu0kstar[k]);
+  //     }
+  //     target += -0.5*log_determinant(Lambdastar) -
+  //               nustar * log(Hstar) +
+  //               lgamma(nustar);
+  //   } else{
+  //     // posterior distribution
+  //     target += lgamma(n*0.5 + nu0) + 0.5 * log_determinant_spd(Lambda0) + 
+  //               nu0 * log(H0) - 0.5 * log_determinant_spd(Lambda) - lgamma(nu0) -
+  //               (nu0 + n*0.5) * log(H);
+  //   }
+  // }
 }
 
-generated quantities {
-  vector[p] tilde_beta = rep_vector(0,p);
-  real<lower=0> df;
-  matrix[p,p] Sigma = rep_matrix(0, p, p);
-  real<lower=0> shape;
-  real<lower=0> scale;
-  
-  // Likelihood term 
-  if (post == 1){
-    if (seq == 1){
-      tilde_beta = inv_Lambdastar *
-                   (K*V0*mu0 + X'*y + sum_X0ky0kdeltak);
-      df = 2*nustar;
-      Sigma = Hstar / nustar * inv_Lambdastar;
-      shape = nustar;
-      scale = Hstar;
-    } else{
-      tilde_beta = inv_Lambda *
-                   (X'*y + tilde_beta00);
-      df = n + 2*nu0;
-      Sigma = 2*H / df * inv_Lambda;
-      shape = nu0 + n*0.5;
-      scale = H;
-    }
-  }
-  
-  vector[p] beta = multi_student_t_rng(df, tilde_beta, Sigma);
-  real<lower=0> sigma = inv_gamma_rng(shape, scale);
-}
+// generated quantities {
+//   vector[p] tilde_beta = rep_vector(0,p);
+//   real<lower=0> df;
+//   matrix[p,p] Sigma = rep_matrix(0, p, p);
+//   real<lower=0> shape;
+//   real<lower=0> scale;
+//   
+//   // Likelihood term 
+//   if (post == 1){
+//     if (seq == 1){
+//       tilde_beta = inv_Lambdastar *
+//                    (K*V0*mu0 + X'*y + sum_X0ky0kdeltak);
+//       df = 2*nustar;
+//       Sigma = Hstar / nustar * inv_Lambdastar;
+//       shape = nustar;
+//       scale = Hstar;
+//     } else{
+//       tilde_beta = inv_Lambda *
+//                    (X'*y + tilde_beta00);
+//       df = n + 2*nu0;
+//       Sigma = 2*H / df * inv_Lambda;
+//       shape = nu0 + n*0.5;
+//       scale = H;
+//     }
+//   }
+//   
+//   vector[p] beta = multi_student_t_rng(df, tilde_beta, Sigma);
+//   real<lower=0> sigma = inv_gamma_rng(shape, scale);
+// }

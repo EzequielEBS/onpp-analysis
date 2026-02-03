@@ -178,18 +178,18 @@ sim4.3 <- sim_sce(model = "bin",14, 200, sce4.3, gamma_model_bin, delta_model_bi
 
 
 # save results
-save(sim1.1, file = "results/bin/sim1_1_bin.RData")
-save(sim1.2, file = "results/bin/sim1_2_bin.RData")
-save(sim1.3, file = "results/bin/sim1_3_bin.RData")
-save(sim2.1, file = "results/bin/sim2_1_bin.RData")
-save(sim2.2, file = "results/bin/sim2_2_bin.RData")
-save(sim2.3, file = "results/bin/sim2_3_bin.RData")
-save(sim3.1, file = "results/bin/sim3_1_bin.RData")
-save(sim3.2, file = "results/bin/sim3_2_bin.RData")
-save(sim3.3, file = "results/bin/sim3_3_bin.RData")
-save(sim4.1, file = "results/bin/sim4_1_bin.RData")
-save(sim4.2, file = "results/bin/sim4_2_bin.RData")
-save(sim4.3, file = "results/bin/sim4_3_bin.RData")
+save(sim1.1, file = "results/samples/bin/sim1_1_bin.RData")
+save(sim1.2, file = "results/samples/bin/sim1_2_bin.RData")
+save(sim1.3, file = "results/samples/bin/sim1_3_bin.RData")
+save(sim2.1, file = "results/samples/bin/sim2_1_bin.RData")
+save(sim2.2, file = "results/samples/bin/sim2_2_bin.RData")
+save(sim2.3, file = "results/samples/bin/sim2_3_bin.RData")
+save(sim3.1, file = "results/samples/bin/sim3_1_bin.RData")
+save(sim3.2, file = "results/samples/bin/sim3_2_bin.RData")
+save(sim3.3, file = "results/samples/bin/sim3_3_bin.RData")
+save(sim4.1, file = "results/samples/bin/sim4_1_bin.RData")
+save(sim4.2, file = "results/samples/bin/sim4_2_bin.RData")
+save(sim4.3, file = "results/samples/bin/sim4_3_bin.RData")
 
 #-------------------------------------------------------------------------------
 # Run simulations for the binomial model with predefined data

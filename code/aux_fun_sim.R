@@ -69,7 +69,7 @@ sample_sce_bin <- function(par_list, gamma_model, delta_model){
   # sample from the models
   sample_delta_onpp <- gamma_model$sample(data = data_onpp, 
                                               chains = 4, 
-                                              parallel_chains = 4, 
+                                              # parallel_chains = 4, 
                                               iter_warmup = 2000, 
                                               iter_sampling = 2000,
                                               adapt_delta = 0.98,
@@ -77,7 +77,7 @@ sample_sce_bin <- function(par_list, gamma_model, delta_model){
   )
   sample_delta_onppseq <- gamma_model$sample(data = data_onppseq, 
                                                  chains = 4, 
-                                                 parallel_chains = 4, 
+                                                 # parallel_chains = 4, 
                                                  iter_warmup = 2000, 
                                                  iter_sampling = 2000,
                                                  adapt_delta = 0.98,
@@ -85,7 +85,7 @@ sample_sce_bin <- function(par_list, gamma_model, delta_model){
   )
   sample_delta_npp <- delta_model$sample(data = data_npp, 
                                              chains = 4, 
-                                             parallel_chains = 4, 
+                                             # parallel_chains = 4, 
                                              iter_warmup = 2000, 
                                              iter_sampling = 2000,
                                              adapt_delta = 0.98,
@@ -93,7 +93,7 @@ sample_sce_bin <- function(par_list, gamma_model, delta_model){
   )
   sample_delta_nppseq <- delta_model$sample(data = data_nppseq, 
                                                 chains = 4, 
-                                                parallel_chains = 4, 
+                                                # parallel_chains = 4, 
                                                 iter_warmup = 2000, 
                                                 iter_sampling = 2000,
                                                 adapt_delta = 0.98,
@@ -154,12 +154,10 @@ sample_sce_bin <- function(par_list, gamma_model, delta_model){
                                  divergences_nppseq = divergences_nppseq,
                                  divergences_onpp = divergences_onpp,
                                  divergences_onppseq = divergences_onppseq),
-              output_files = list(
-                npp = sample_delta_npp$output_files(),
-                nppseq = sample_delta_nppseq$output_files(),
-                onpp = sample_delta_onpp$output_files(),
-                onppseq = sample_delta_onppseq$output_files()
-              ),
+              delta_npp = draws_delta_npp,
+              delta_nppseq = draws_delta_nppseq,
+              delta_onpp = draws_delta_onpp,
+              delta_onppseq = draws_delta_onppseq,
               theta_npp = theta_npp,
               theta_nppseq = theta_nppseq,
               theta_onpp = theta_onpp,
@@ -319,12 +317,10 @@ sample_sce_poi <- function(par_list, gamma_model, delta_model){
                                  divergences_nppseq = divergences_nppseq,
                                  divergences_onpp = divergences_onpp,
                                  divergences_onppseq = divergences_onppseq),
-              output_files = list(
-                npp = sample_delta_npp$output_files(),
-                nppseq = sample_delta_nppseq$output_files(),
-                onpp = sample_delta_onpp$output_files(),
-                onppseq = sample_delta_onppseq$output_files()
-              ),
+              delta_npp = draws_delta_npp,
+              delta_nppseq = draws_delta_nppseq,
+              delta_onpp = draws_delta_onpp,
+              delta_onppseq = draws_delta_onppseq,
               theta_npp = theta_npp,
               theta_nppseq = theta_nppseq,
               theta_onpp = theta_onpp,
@@ -398,13 +394,79 @@ sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model){
   return(list(hattheta = hattheta, 
               hatdelta = hatdelta,
               divergences = divergences,
-              output_files = lapply(results, function(x) x$output_files),
+              delta = lapply(results, function(x) list(delta_npp = x$delta_npp,
+                                                        delta_nppseq = x$delta_nppseq,
+                                                        delta_onpp = x$delta_onpp,
+                                                        delta_onppseq = x$delta_onppseq)
+              ),
               theta = lapply(results, function(x) list(theta_npp = x$theta_npp,
                                                         theta_nppseq = x$theta_nppseq,
                                                         theta_onpp = x$theta_onpp,
                                                         theta_onppseq = x$theta_onppseq)
               )
   ))
+}
+
+# Extract draws from the samples
+get_hat_par <- function(samples) {
+  hat_delta_npp <- do.call(rbind, 
+                           lapply(samples, 
+                                  function(x) colMeans(x$draws_delta_npp)))
+  hat_delta_nppseq <- do.call(rbind,
+                              lapply(samples, 
+                                     function(x) colMeans(x$draws_delta_nppseq)))
+  hat_delta_onpp <- do.call(rbind,
+                            lapply(samples, 
+                                   function(x) colMeans(x$draws_delta_onpp)))
+  hat_delta_onppseq <- do.call(rbind,
+                               lapply(samples, 
+                                      function(x) colMeans(x$draws_delta_onppseq)))
+  hat_beta_npp <- do.call(rbind,
+                          lapply(samples, 
+                                 function(x) colMeans(x$draws_beta_npp)))
+  hat_beta_nppseq <- do.call(rbind,
+                             lapply(samples, 
+                                    function(x) colMeans(x$draws_beta_nppseq)))
+  hat_beta_onpp <- do.call(rbind,
+                           lapply(samples, 
+                                  function(x) colMeans(x$draws_beta_onpp)))
+  hat_beta_onppseq <- do.call(rbind,
+                              lapply(samples, 
+                                     function(x) colMeans(x$draws_beta_onppseq)))
+  hat_sigma_npp <- do.call(rbind,
+                           lapply(samples, 
+                                  function(x) colMeans(x$draws_sigma_npp)))
+  hat_sigma_nppseq <- do.call(rbind,
+                              lapply(samples, 
+                                     function(x) colMeans(x$draws_sigma_nppseq)))
+  hat_sigma_onpp <- do.call(rbind,
+                            lapply(samples, 
+                                   function(x) colMeans(x$draws_sigma_onpp)))
+  hat_sigma_onppseq <- do.call(rbind,
+                               lapply(samples, 
+                                      function(x) colMeans(x$draws_sigma_onppseq)))
+  hat_delta <- lapply(seq_len(ncol(hat_delta_npp)), function(i) {
+    cbind(hat_delta_npp[,i],
+          hat_delta_nppseq[,i],
+          hat_delta_onpp[,i],
+          hat_delta_onppseq[,i])
+  })
+  hat_theta <- lapply(1:(ncol(hat_beta_npp) + 1), function(i) {
+    if (i <= ncol(hat_beta_npp)) {
+      cbind(hat_beta_npp[,i],
+            hat_beta_nppseq[,i],
+            hat_beta_onpp[,i],
+            hat_beta_onppseq[,i])
+    } else {
+      cbind(hat_sigma_npp,
+            hat_sigma_nppseq,
+            hat_sigma_onpp,
+            hat_sigma_onppseq)
+    }
+    
+  })
+  return(list(hatdelta = hat_delta,
+              hattheta = hat_theta))
 }
 
 # function to plot boxplots
@@ -463,10 +525,15 @@ compute_bci <- function(list_draws, alpha){
 
 plot_sce_bin <- function(j) {
   sim <- sim_sces[[j]]
+  sce <- as.roman(ceiling(j/3))
+  sce <- ifelse(j %% 3 == 1, paste0(sce,".I"), ifelse(j %% 3 == 2, paste0(sce,".II"), paste0(sce,".III")))
   plots_delta <- lapply(seq_along(sim$hatdelta), function(i) {
-    plot <- plot_boxplot(sim$hatdelta[[i]], bquote(hat(delta)[.(i)])) + coord_flip()
+    plot <- plot_boxplot(sim$hatdelta[[i]], bquote(hat(delta)[.(i)])) + 
+      coord_flip() +
+      ggtitle(paste0("Scenario ", sce))
+      
     if (i>1) {
-      plot <- plot + scale_x_discrete(labels = NULL)
+      plot <- plot + scale_x_discrete(labels = NULL) + ggtitle(NULL)
     }
     return(plot)
   })
@@ -476,9 +543,6 @@ plot_sce_bin <- function(j) {
   # Combine plots
   plot <- Reduce(`+`, plots_delta) + plot_theta + plot_layout(ncol = length(plots_delta) + 1) + 
     scale_x_discrete(labels = NULL)
-  sce <- as.roman(ceiling(j/3))
-  sce <- ifelse(j %% 3 == 1, paste0(sce,"_I"), ifelse(j %% 3 == 2, paste0(sce,"_II"), paste0(sce,"_III")))
-  ggsave(paste0("results/figures/bin/box_sim_", sce, "_bin.pdf"), plot, width = 10, height = 4, dpi = 300)
   return(plot)
 }
 
@@ -538,6 +602,88 @@ compute_wis <- function(list_draws, quantile_level, true_value) {
               hat_wis_nppseq = mean(wis_nppseq),
               hat_wis_onpp = mean(wis_onpp),
               hat_wis_onppseq = mean(wis_onppseq)
+  ))
+}
+
+compute_wis_lm <- function(list_draws, quantile_level, true_value) {
+  N <- length(list_draws)
+  q_npp <- lapply(1:(ncol(list_draws[[1]]$draws_beta_npp) + 1), function(j) {
+    if (j <= ncol(list_draws[[1]]$draws_beta_npp)) {
+      do.call(rbind,
+              lapply(list_draws, function(x) {
+                quantile(x$draws_beta_npp[, j], probs = quantile_level)
+              })
+      )
+    } else {
+      do.call(rbind,
+              lapply(list_draws, function(x) {
+                quantile(x$draws_sigma_npp, probs = quantile_level)
+              })
+      )
+    }
+  })
+  q_nppseq <- lapply(1:(ncol(list_draws[[1]]$draws_beta_nppseq) + 1), function(j) {
+    if (j <= ncol(list_draws[[1]]$draws_beta_nppseq)) {
+      do.call(rbind,
+              lapply(list_draws, function(x) {
+                quantile(x$draws_beta_nppseq[, j], probs = quantile_level)
+              })
+      )
+    } else {
+      do.call(rbind,
+              lapply(list_draws, function(x) {
+                quantile(x$draws_sigma_nppseq, probs = quantile_level)
+              })
+      )
+    }
+  }
+  )
+  q_onpp <- lapply(1:(ncol(list_draws[[1]]$draws_beta_onpp) + 1), function(j) {
+    if (j <= ncol(list_draws[[1]]$draws_beta_onpp)) {
+      do.call(rbind,
+              lapply(list_draws, function(x) {
+                quantile(x$draws_beta_onpp[, j], probs = quantile_level)
+              })
+      )
+    } else {
+      do.call(rbind,
+              lapply(list_draws, function(x) {
+                quantile(x$draws_sigma_onpp, probs = quantile_level)
+              })
+      )
+    }
+  })
+  q_onppseq <- lapply(1:(ncol(list_draws[[1]]$draws_beta_onppseq) + 1), function(j) {
+    if (j <= ncol(list_draws[[1]]$draws_beta_onppseq)) {
+      do.call(rbind,
+              lapply(list_draws, function(x) {
+                quantile(x$draws_beta_onppseq[, j], probs = quantile_level)
+              })
+      )
+    } else {
+      do.call(rbind,
+              lapply(list_draws, function(x) {
+                quantile(x$draws_sigma_onppseq, probs = quantile_level)
+              })
+      )
+    }
+  })
+  wis_npp <- unlist(lapply(1:length(q_npp), function(i) {
+    mean(wis(rep(true_value[i], N), q_npp[[i]], quantile_level))
+  }))
+  wis_nppseq <- unlist(lapply(1:length(q_nppseq), function(i) {
+    mean(wis(rep(true_value[i], N), q_nppseq[[i]], quantile_level))
+  }))
+  wis_onpp <- unlist(lapply(1:length(q_onpp), function(i) {
+    mean(wis(rep(true_value[i], N), q_onpp[[i]], quantile_level))
+  }))
+  wis_onppseq <- unlist(lapply(1:length(q_onppseq), function(i) {
+    mean(wis(rep(true_value[i], N), q_onppseq[[i]], quantile_level))
+  }))
+  return(list(hat_wis_npp = wis_npp,
+              hat_wis_nppseq = wis_nppseq,
+              hat_wis_onpp = wis_onpp,
+              hat_wis_onppseq = wis_onppseq
   ))
 }
 
@@ -640,7 +786,8 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     geom_pointrange(data = bci_npp,
                     mapping = aes(x = sample, y = hattheta,
                                   ymin = lower, ymax = upper, colour = include),
-                    na.rm = TRUE) +
+                    na.rm = TRUE,
+                    fatten = 0.5) +
     geom_hline(yintercept = 0.5, linetype = "longdash") +
     ggtitle(paste(
       "NPP ", "(",
@@ -660,7 +807,8 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     geom_pointrange(data = bci_nppseq,
                     mapping = aes(x = sample, y = hattheta,
                                   ymin = lower, ymax = upper, colour = include),
-                    na.rm = TRUE) +
+                    na.rm = TRUE,
+                    fatten = 0.5) +
     geom_hline(yintercept = 0.5, linetype = "longdash") +
     ggtitle(paste(
       "NPP-SEQ ", "(",
@@ -674,13 +822,15 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     scale_color_manual(values = c("TRUE" = "#00BFC4", "FALSE" = "tomato"), drop = FALSE) +
     ylim(0, 1) +
     xlab("") +
-    ylab("")
+    ylab("") +
+    scale_y_continuous(limits = c(0, 1), breaks = NULL) 
   
   plot_onpp <- ggplot() +
     geom_pointrange(data = bci_onpp,
                     mapping = aes(x = sample, y = hattheta,
                                   ymin = lower, ymax = upper, colour = include),
-                    na.rm = TRUE) +
+                    na.rm = TRUE,
+                    fatten = 0.5) +
     geom_hline(yintercept = 0.5, linetype = "longdash") +
     ggtitle(paste(
       "ONPP ", "(",
@@ -694,13 +844,15 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     scale_color_manual(values = c("TRUE" = "#00BFC4", "FALSE" = "tomato"), drop = FALSE) +
     ylim(0, 1) +
     xlab("") +
-    ylab("")
+    ylab("") +
+    scale_y_continuous(limits = c(0, 1), breaks = NULL) 
   
   plot_onppseq <- ggplot() +
     geom_pointrange(data = bci_onppseq,
                     mapping = aes(x = sample, y = hattheta,
                                   ymin = lower, ymax = upper, colour = include),
-                    na.rm = TRUE) +
+                    na.rm = TRUE,
+                    fatten = 0.5) +
     geom_hline(yintercept = 0.5, linetype = "longdash") +
     ggtitle(paste(
       "ONPP-SEQ ", "(",
@@ -714,18 +866,63 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     scale_color_manual(values = c("TRUE" = "#00BFC4", "FALSE" = "tomato"), drop = FALSE) +
     ylim(0, 1) +
     xlab("") +
-    ylab("")
+    ylab("") +
+    scale_y_continuous(limits = c(0, 1), breaks = NULL) 
   
   # combine plots
   title <- paste(prob*100, "%",
                  " BCI for scenario ", 
                  scenario, 
                  " (", 
-                 model, 
+                 # model, 
                  ")", 
                  sep = "")
-  comb_plot <- (plot_npp + plot_nppseq) / (plot_onpp + plot_onppseq) + 
-    plot_layout(guides = "collect", axis_titles = "collect") +
-    plot_annotation(title = title)
+  comb_plot <- (plot_npp + plot_nppseq + plot_onpp + plot_onppseq) + 
+    plot_layout(guides = "collect", axis_titles = "collect", ncol = 4) &
+    theme(legend.position = "none") &
+    theme(text = element_text(size = 16),        
+          axis.title = element_text(size = 18),  
+          axis.text = element_text(size = 16),   
+          legend.title = element_text(size = 18),
+          legend.text = element_text(size = 16))
   return(comb_plot)
+}
+
+plot_sce_lm <- function(j, hat) {
+  sim <- hat[[j]]
+  true_value <- c(betastar, sgstar)
+  sce <- as.roman(ceiling(j/3))
+  sce <- ifelse(j %% 3 == 1, paste0(sce,".I"), ifelse(j %% 3 == 2, paste0(sce,".II"), paste0(sce,".III")))
+  plots_delta <- lapply(seq_along(sim$hatdelta), function(i) {
+    plot <- plot_boxplot(sim$hatdelta[[i]], bquote(hat(delta)[.(i)])) + coord_flip() +
+      ggtitle(paste("Scenario ", sce))
+    if (i>1) {
+      plot <- plot + scale_x_discrete(labels = NULL) + ggtitle(NULL)
+    }
+    return(plot)
+  })
+  plot_theta <- lapply(seq_along(sim$hattheta), function(i) {
+    if(i <= length(betastar)) {
+      name <- bquote(hat(beta)[.(i)])
+      plot <- plot_boxplot(sim$hattheta[[i]], name) + 
+        geom_hline(yintercept = true_value[i], linetype = "dotted", color = "red", size = 1) +
+        coord_flip()
+    } else {
+      name <- bquote(hat(sigma^2))
+      plot <- plot_boxplot(sim$hattheta[[i]], name) + 
+        geom_hline(yintercept = true_value[i]^2, linetype = "dotted", color = "red", size = 1) +
+        coord_flip()
+    }
+    
+    if (i>1) {
+      plot <- plot + scale_x_discrete(labels = NULL)
+    }
+    return(plot)
+  })
+  plot_delta_ <- Reduce(`+`, plots_delta) + plot_layout(ncol = length(plots_delta)) + 
+    scale_x_discrete(labels = NULL)
+  plot_theta_ <- Reduce(`+`, plot_theta) + plot_layout(ncol = length(plot_theta)) + 
+    scale_x_discrete(labels = NULL)
+  return(list(plot_delta_,
+              plot_theta_))
 }

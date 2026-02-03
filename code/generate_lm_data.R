@@ -57,14 +57,14 @@ generate_lm <- function(X0, beta0, sg0, X, beta, sg) {
 # define historical parameters
 K <- 3
 p0 <- 3
-n0 <- 200
+n0 <- 100
 
 # define current parameters
 n <- n0
 p <- p0
 
 # set number of datasets to generate
-N <- 100
+N <- 200
 
 betastar <- c(1, -0.5, 0.5)
 sgstar <- 1
@@ -113,22 +113,3 @@ generate_sce <- function(i) {
   saveRDS(sce_data, file = paste0("results/sim_data/lm/sce_", sce, ".rds"))
   return(sce_data)
 }
-
-all_sce_data <- lapply(1:length(cs), generate_sce)
-
-ggplot() +
-  geom_density(aes(x = all_sce_data[[1]][[1]]$y), fill = viridis(4)[4], alpha = 0.5) +
-  geom_density(aes(x = all_sce_data[[1]][[1]]$y0[[1]]), fill = viridis(4)[3], alpha = 0.5) +
-  geom_density(aes(x = all_sce_data[[1]][[1]]$y0[[2]]), fill = viridis(4)[2], alpha = 0.5) +
-  geom_density(aes(x = all_sce_data[[1]][[1]]$y0[[3]]), fill = viridis(4)[1], alpha = 0.5)
-
-ggplot() +
-  geom_density(aes(x = all_sce_data[[3]][[1]]$y), fill = viridis(4)[4], alpha = 0.5) +
-  geom_density(aes(x = all_sce_data[[3]][[1]]$y0[[1]]), fill = viridis(4)[3], alpha = 0.5) +
-  geom_density(aes(x = all_sce_data[[3]][[1]]$y0[[2]]), fill = viridis(4)[2], alpha = 0.5) +
-  geom_density(aes(x = all_sce_data[[3]][[1]]$y0[[3]]), fill = viridis(4)[1], alpha = 0.5)
-
-hist(all_sce_data[[1]][[3]]$y, breaks = 15, col = "lightgray")
-hist(all_sce_data[[1]][[3]]$y0[[1]], add = TRUE, col = "skyblue", 15)
-hist(all_sce_data[[1]][[3]]$y0[[2]], add = TRUE, col = "orange", 15)
-hist(all_sce_data[[1]][[3]]$y0[[3]], add = TRUE, col = "pink", 15)
