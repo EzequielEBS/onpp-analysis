@@ -308,352 +308,164 @@ print(xtable::xtable(order_error_df %>%
 
 
 # ------------------------------------------------------------------------------
-
-plot_delta1_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_npp[,1], color = "NPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_nppseq[,1], color = "NPP_SEQ"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onpp[,1], color = "ONPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onppseq[,1], color = "ONPP_SEQ"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
-                                "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
-                                "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
-                                "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
-  labs(x = expression(delta[1]),
-       y = NULL) +
-  ggtitle("Scenario III.I")
-plot_delta1_3.1
-plot_delta2_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_npp[,2], color = "NPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_nppseq[,2], color = "NPP_SEQ"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onpp[,2], color = "ONPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onppseq[,2], color = "ONPP_SEQ"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
-                                "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
-                                "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
-                                "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
-  labs(x = expression(delta[2]),
-       y = NULL)
-plot_delta2_3.1
-plot_delta3_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_npp[,3], color = "NPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_nppseq[,3], color = "NPP_SEQ"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onpp[,3], color = "ONPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onppseq[,3], color = "ONPP_SEQ"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
-                                "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
-                                "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
-                                "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
-  labs(x = expression(delta[3]),
-       y = NULL)
-plot_delta3_3.1
-combined_delta_plots_3.1 <- (plot_delta1_3.1 + plot_delta2_3.1 + plot_delta3_3.1) + 
-  plot_layout(ncol = 3, guides = "collect")
-combined_delta_plots_3.1
-
-plot_delta1_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_npp[,1], color = "NPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_nppseq[,1], color = "NPP_SEQ"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onpp[,1], color = "ONPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onppseq[,1], color = "ONPP_SEQ"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
-                                "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
-                                "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
-                                "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
-  labs(x = expression(delta[1]),
-       y = NULL) +
-  ggtitle("Scenario III.III")
-plot_delta1_3.3
-plot_delta2_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_npp[,2], color = "NPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_nppseq[,2], color = "NPP_SEQ"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onpp[,2], color = "ONPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onppseq[,2], color = "ONPP_SEQ"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
-                                "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
-                                "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
-                                "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
-  labs(x = expression(delta[2]),
-       y = NULL)
-plot_delta2_3.3
-plot_delta3_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_npp[,3], color = "NPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_nppseq[,3], color = "NPP_SEQ"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onpp[,3], color = "ONPP"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onppseq[,3], color = "ONPP_SEQ"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
-                                "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
-                                "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
-                                "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
-  labs(x = expression(delta[3]),
-       y = NULL)
-plot_delta3_3.3
-combined_delta_plots_3.3 <- (plot_delta1_3.3 + plot_delta2_3.3 + plot_delta3_3.3) + 
-  plot_layout(ncol = 3, guides = "collect")
-combined_delta_plots_3.3
+# Plot posterior distributions for a given simulation
+# ------------------------------------------------------------------------------
 
 
+plot_sim_delta <- function(sce, sim){
+  name_sce <- as.roman(ceiling(sce/3))
+  name_sce <- ifelse(sce %% 3 == 1, paste0(name_sce,".I"), 
+                     ifelse(sce %% 3 == 2, paste0(name_sce,".II"), paste0(name_sce,".III")))
+  # plot_delta1 <- ggplot() +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_npp[,1], color = "NPP"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_nppseq[,1], color = "NPP_SEQ"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onpp[,1], color = "ONPP"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onppseq[,1], color = "ONPP_SEQ"), linewidth = 0.8) +
+  #   scale_color_manual(name = NULL, 
+  #                      values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
+  #                                 "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
+  #                                 "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
+  #                                 "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
+  #   labs(x = expression(delta[1]),
+  #        y = NULL) +
+  #   ggtitle(paste0("Scenario ", name_sce))
+  # plot_delta2 <- ggplot() +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_npp[,2], color = "NPP"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_nppseq[,2], color = "NPP_SEQ"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onpp[,2], color = "ONPP"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onppseq[,2], color = "ONPP_SEQ"), linewidth = 0.8) +
+  #   scale_color_manual(name = NULL, 
+  #                      values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
+  #                                 "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
+  #                                 "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
+  #                                 "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
+  #   labs(x = expression(delta[2]),
+  #        y = NULL)
+  # plot_delta3 <- ggplot() +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_npp[,3], color = "NPP"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_nppseq[,3], color = "NPP_SEQ"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onpp[,3], color = "ONPP"), linewidth = 0.8) +
+  #   geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onppseq[,3], color = "ONPP_SEQ"), linewidth = 0.8) +
+  #   scale_color_manual(name = NULL, 
+  #                      values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1], 
+  #                                 "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
+  #                                 "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
+  #                                 "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
+  #   labs(x = expression(delta[3]),
+  #        y = NULL)
+  # 
+  # combined_plots <- (plot_delta1 + plot_delta2 + plot_delta3 + plot_theta) + 
+  #   plot_layout(ncol = 4, guides = "collect")
+  
+  
+  plot_npp <- ggplot() +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
+    scale_color_manual(name = NULL, 
+                       values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
+                                  "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
+                                  "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
+                       labels = c(expression(delta[1]), 
+                                  expression(delta[2]),
+                                  expression(delta[3]))) +
+    labs(x = expression(delta),
+         y = NULL) +
+    ggtitle(label = paste0("Scenario ", name_sce),
+            subtitle = "NPP")
+  
+  plot_nppseq <- ggplot() +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_nppseq[,1], color = "delta1"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_nppseq[,2], color = "delta2"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_nppseq[,3], color = "delta3"), linewidth = 0.8) +
+    scale_color_manual(name = NULL, 
+                       values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
+                                  "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
+                                  "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
+                       labels = c(expression(delta[1]), 
+                                  expression(delta[2]),
+                                  expression(delta[3]))) +
+    labs(x = expression(delta),
+         y = NULL) +
+    ggtitle(label = NULL,
+            subtitle =  "NPP-SEQ")
+  
+  plot_onpp <- ggplot() +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
+    scale_color_manual(name = NULL, 
+                       values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
+                                  "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
+                                  "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
+                       labels = c(expression(delta[1]), 
+                                  expression(delta[2]),
+                                  expression(delta[3]))) +
+    labs(x = expression(delta),
+         y = NULL) +
+    ggtitle(label = NULL,
+            subtitle = "ONPP")
+  
+  plot_onppseq <- ggplot() +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onppseq[,1], color = "delta1"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onppseq[,2], color = "delta2"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$delta[[sim]]$delta_onppseq[,3], color = "delta3"), linewidth = 0.8) +
+    scale_color_manual(name = NULL, 
+                       values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
+                                  "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
+                                  "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
+                       labels = c(expression(delta[1]), 
+                                  expression(delta[2]),
+                                  expression(delta[3]))) +
+    labs(x = expression(delta),
+         y = NULL) +
+    ggtitle(label = NULL,
+            subtitle = "ONPP-SEQ")
+  combined_plots <- (plot_npp + plot_nppseq + plot_onpp + plot_onppseq) + 
+    plot_layout(ncol = 4, guides = "collect")
+  return(combined_plots)
+}
 
-plot_npp_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(delta),
-       y = NULL) +
-  ggtitle(label = "Scenario III.I",
-          subtitle = "NPP")
+plot_sim_theta <- function(sce, sim){
+  name_sce <- as.roman(ceiling(sce/3))
+  name_sce <- ifelse(sce %% 3 == 1, paste0(name_sce,".I"), 
+                     ifelse(sce %% 3 == 2, paste0(name_sce,".II"), paste0(name_sce,".III")))
+  plot_theta <- ggplot() +
+    geom_density(aes(x = sim_sces[[sce]]$theta[[sim]]$theta_npp, color = "NPP"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$theta[[sim]]$theta_nppseq, color = "NPP_SEQ"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$theta[[sim]]$theta_onpp, color = "ONPP"), linewidth = 0.8) +
+    geom_density(aes(x = sim_sces[[sce]]$theta[[sim]]$theta_onppseq, color = "ONPP_SEQ"), linewidth = 0.8) +
+    scale_color_manual(name = NULL,
+                       values = c("NPP" = RColorBrewer::brewer.pal(4, "Set1")[1],
+                                  "NPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[2],
+                                  "ONPP" = RColorBrewer::brewer.pal(4, "Set1")[3],
+                                  "ONPP_SEQ" = RColorBrewer::brewer.pal(4, "Set1")[4])) +
+    labs(x = expression(theta),
+         y = NULL)
+  return(plot_theta)
+}
 
-plot_nppseq_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_nppseq[,1], color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_nppseq[,2], color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_nppseq[,3], color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(delta),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle =  "NPP-SEQ")
+sim <- 1  # choose which simulation to plot
 
-plot_onpp_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(delta),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle = "ONPP")
-
-plot_onppseq_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onppseq[,1], color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onppseq[,2], color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$delta[[1]]$delta_onppseq[,3], color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(delta),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle = "ONPP-SEQ")
-combined_models_3.1 <- (plot_npp_3.1 + plot_nppseq_3.1 + plot_onpp_3.1 + plot_onppseq_3.1) + 
-  plot_layout(ncol = 4, guides = "collect")
-combined_models_3.1
-
-plot_npp_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(delta),
-       y = NULL) +
-  ggtitle(label = "Scenario III.III",
-          subtitle = "NPP")
-plot_nppseq_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_nppseq[,1], color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_nppseq[,2], color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_nppseq[,3], color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(delta),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle =  "NPP-SEQ")
-plot_onpp_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(delta),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle = "ONPP")
-plot_onppseq_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onppseq[,1], color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onppseq[,2], color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$delta[[1]]$delta_onppseq[,3], color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(delta),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle = "ONPP-SEQ")
-combined_models_3.3 <- (plot_npp_3.3 + plot_nppseq_3.3 + plot_onpp_3.3 + plot_onppseq_3.3) + 
-  plot_layout(ncol = 4, guides = "collect")
-combined_models_3.3
-
-plot_hatdelta_npp_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$hatdelta[[1]]$hatdelta_npp, color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$hatdelta[[2]]$hatdelta_npp, color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$hatdelta[[3]]$hatdelta_npp, color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(bar(delta)),
-       y = NULL) +
-  ggtitle(label = "Scenario III.I",
-          subtitle = "NPP")
-plot_hatdelta_nppseq_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$hatdelta[[1]]$hatdelta_nppseq, color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$hatdelta[[2]]$hatdelta_nppseq, color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$hatdelta[[3]]$hatdelta_nppseq, color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(bar(delta)),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle =  "NPP-SEQ")
-plot_hatdelta_onpp_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$hatdelta[[1]]$hatdelta_onpp, color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$hatdelta[[2]]$hatdelta_onpp, color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$hatdelta[[3]]$hatdelta_onpp, color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(bar(delta)),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle = "ONPP")
-plot_hatdelta_onppseq_3.1 <- ggplot() +
-  geom_density(aes(x = sim3.1$hatdelta[[1]]$hatdelta_onppseq, color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$hatdelta[[2]]$hatdelta_onppseq, color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.1$hatdelta[[3]]$hatdelta_onppseq, color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(bar(delta)),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle = "ONPP-SEQ")
-combined_hatmodels_3.1 <- (plot_hatdelta_npp_3.1 + plot_hatdelta_nppseq_3.1 + plot_hatdelta_onpp_3.1 + plot_hatdelta_onppseq_3.1) + 
-  plot_layout(ncol = 4, guides = "collect")
-combined_hatmodels_3.1
-
-plot_hatdelta_npp_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$hatdelta[[1]]$hatdelta_npp, color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$hatdelta[[2]]$hatdelta_npp, color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$hatdelta[[3]]$hatdelta_npp, color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(bar(delta)),
-       y = NULL) +
-  ggtitle(label = "Scenario III.III",
-          subtitle = "NPP")
-plot_hatdelta_nppseq_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$hatdelta[[1]]$hatdelta_nppseq, color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$hatdelta[[2]]$hatdelta_nppseq, color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$hatdelta[[3]]$hatdelta_nppseq, color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(bar(delta)),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle =  "NPP-SEQ")
-plot_hatdelta_onpp_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$hatdelta[[1]]$hatdelta_onpp, color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$hatdelta[[2]]$hatdelta_onpp, color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$hatdelta[[3]]$hatdelta_onpp, color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(bar(delta)),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle = "ONPP")
-plot_hatdelta_onppseq_3.3 <- ggplot() +
-  geom_density(aes(x = sim3.3$hatdelta[[1]]$hatdelta_onppseq, color = "delta1"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$hatdelta[[2]]$hatdelta_onppseq, color = "delta2"), linewidth = 0.8) +
-  geom_density(aes(x = sim3.3$hatdelta[[3]]$hatdelta_onppseq, color = "delta3"), linewidth = 0.8) +
-  scale_color_manual(name = NULL, 
-                     values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                     labels = c(expression(delta[1]), 
-                                expression(delta[2]),
-                                expression(delta[3]))) +
-  labs(x = expression(bar(delta)),
-       y = NULL) +
-  ggtitle(label = NULL,
-          subtitle = "ONPP-SEQ")
-combined_hatmodels_3.3 <- (plot_hatdelta_npp_3.3 + plot_hatdelta_nppseq_3.3 + plot_hatdelta_onpp_3.3 + plot_hatdelta_onppseq_3.3) + 
-  plot_layout(ncol = 4, guides = "collect")
-combined_hatmodels_3.3
+plots_sce_eta <- lapply(1:length(sim_sces), function(i) {
+  plot_sim_delta(i, sim = sim)
+})
+lapply(1:4, function(i) {
+  sce_plots <- lapply(1:3, function(j) {
+    plots_sce_eta[[(i-1)*3 + j]]
+  })
+  combined_plot <- Reduce(`/`, sce_plots)
+  sce <- as.roman(i)
+  ggsave(paste0("results/figures/bin/post_eta_sce_", sce, "_bin.pdf"), combined_plot, width = 10, height = 12, dpi = 300)
+})
+plots_sce_theta <- lapply(1:length(sim_sces), function(i) {
+  plot_sim_theta(i, sim = sim)
+})
+lapply(1:4, function(i) {
+  sce_plots <- lapply(1:3, function(j) {
+    plots_sce_theta[[(i-1)*3 + j]]
+  })
+  combined_plot <- Reduce(`/`, sce_plots)
+  sce <- as.roman(i)
+  ggsave(paste0("results/figures/bin/post_theta_sce_", sce, "_bin.pdf"), combined_plot, width = 10, height = 12, dpi = 300)
+})
