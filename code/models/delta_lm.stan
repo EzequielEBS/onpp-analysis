@@ -173,4 +173,5 @@ generated quantities {
   
   vector[p] beta = multi_student_t_rng(df, tilde_beta, Sigma);
   real<lower=0> sigma = inv_gamma_rng(shape, scale);
+  vector[p+1] theta = append_row(beta, sigma);
 }

@@ -26,24 +26,32 @@ load("results/samples/bin/sim3_3_bin.RData")
 load("results/samples/bin/sim4_1_bin.RData")
 load("results/samples/bin/sim4_2_bin.RData")
 load("results/samples/bin/sim4_3_bin.RData")
+load("results/samples/bin/sim5_1_bin.RData")
 
-load("results/samples/bin/sim3_1_os_bin.RData")
-load("results/samples/bin/sim3_2_os_bin.RData")
-load("results/samples/bin/sim3_3_os_bin.RData")
+load("results/samples/bin/sim3_1_bin_eta_flat.RData")
+load("results/samples/bin/sim3_2_bin_eta_flat.RData")
+load("results/samples/bin/sim3_3_bin_eta_flat.RData")
+load("results/samples/bin/sim3_1_bin_eta_gamma_flat.RData")
+load("results/samples/bin/sim3_2_bin_eta_gamma_flat.RData")
+load("results/samples/bin/sim3_3_bin_eta_gamma_flat.RData")
+load("results/samples/bin/sim3_1_bin_all_flat.RData")
+load("results/samples/bin/sim3_2_bin_all_flat.RData")
+load("results/samples/bin/sim3_3_bin_all_flat.RData")
 
 # combine simulations
 sim_sces <- list(
   sim1.1, sim1.2, sim1.3,
   sim2.1, sim2.2, sim2.3,
   sim3.1, sim3.2, sim3.3,
-  sim4.1, sim4.2, sim4.3
+  sim4.1, sim4.2, sim4.3,
+  sim5.1
 )
 
-sim_sces_os <- list(
-  sim1.1, sim1.2, sim1.3,
-  sim2.1, sim2.2, sim2.3,
-  sim3.1_os, sim3.2_os, sim3.3_os,
-  sim4.1, sim4.2, sim4.3
+sim_sce3 <- list(
+  sim3.1, sim3.2, sim3.3,
+  sim3.1_eta_flat, sim3.2_eta_flat, sim3.3_eta_flat,
+  sim3.1_eta_gamma_flat, sim3.2_eta_gamma_flat, sim3.3_eta_gamma_flat,
+  sim3.1_all_flat, sim3.2_all_flat, sim3.3_all_flat
 )
 
 # Compute MSE
@@ -51,14 +59,14 @@ true_value <- 0.5
 mses <- lapply(sim_sces, function(sim) {
   colMeans((sim$hattheta - true_value)^2)
 })
-mses_os <- lapply(sim_sces_os, function(sim) {
+mses_sce3 <- lapply(sim_sce3, function(sim) {
   colMeans((sim$hattheta - true_value)^2)
 })
 
 biass <- lapply(sim_sces, function(sim) {
   colMeans(sim$hattheta) - true_value
 })
-biass_os <- lapply(sim_sces_os, function(sim) {
+biass_sce3 <- lapply(sim_sce3, function(sim) {
   colMeans(sim$hattheta) - true_value
 })
 
@@ -206,27 +214,50 @@ print(xtable::xtable(summary_table %>%
 ), 
 type = "latex", include.rownames = FALSE)
 
+# ------------------------------------------------------------------------------
+# Comparison of scenarios 3
+# ------------------------------------------------------------------------------
 
-summary_table_os <- data.frame(scenario = unlist(lapply(7:9, 
-                                                        function(i) {
-                                                          sce <- as.roman(ceiling(i/3))
-                                                          sce <- ifelse(i %% 3 == 1, paste0(sce,".I"), ifelse(i %% 3 == 2, paste0(sce,".II"), paste0(sce,".III")))
-                                                          rep(sce,4)
-                                                        })
-),
-model = rep(c("NPP", "NPP-SEQ", "ONPP", "ONPP-SEQ"),3),
-bias = unlist(biass_os[7:9]),
-mse = unlist(mses_os[7:9])
+comp_table <- data.frame(scenario = unlist(lapply(7:9, 
+                                    function(i) {
+                                      sce <- as.roman(ceiling(i/3))
+                                      sce <- ifelse(i %% 3 == 1, paste0(sce,".I"), ifelse(i %% 3 == 2, paste0(sce,".II"), paste0(sce,".III")))
+                                      rep(sce,4)
+                                    })),
+                          model = rep(c("NPP", "NPP-SEQ", "ONPP", "ONPP-SEQ"),3),
+                          bias_default = unlist(biass_sce3[1:3]),
+                          mse_default = unlist(mses_sce3[1:3]),
+                          bias_eta_flat = unlist(biass_sce3[4:6]),
+                          mse_eta_flat = unlist(mses_sce3[4:6]),
+                          bias_eta_gamma_flat = unlist(biass_sce3[7:9]),
+                          mse_eta_gamma_flat = unlist(mses_sce3[7:9]),
+                          bias_all_flat = unlist(biass_sce3[10:12]),
+                          mse_all_flat = unlist(mses_sce3[10:12])
 )
-colnames(summary_table_os) <- c("Scenario", "Prior", "Bias", "MSE")
+colnames(comp_table) <- c("Scenario", 
+                          "Prior", 
+                          "Bias_Default", 
+                          "MSE_Default",
+                          "Bias_Eta_Flat",
+                          "MSE_Eta_Flat",
+                          "Bias_Eta_Gamma_Flat",
+                          "MSE_Eta_Gamma_Flat",
+                          "Bias_All_Flat",
+                          "MSE_All_Flat"
+                          )
 
-print(xtable::xtable(summary_table_os %>% 
+print(xtable::xtable(comp_table %>% 
                        mutate(
-                         MSE = formatC(MSE, format = "f", digits = 3),
-                         Bias = formatC(Bias, format = "f", digits = 3)
-                       )
-), 
-type = "latex", include.rownames = FALSE)
+                         Bias_Default = formatC(Bias_Default, format = "f", digits = 3),
+                         MSE_Default = formatC(MSE_Default, format = "f", digits = 3),
+                         Bias_Eta_Flat = formatC(Bias_Eta_Flat, format = "f", digits = 3),
+                         MSE_Eta_Flat = formatC(MSE_Eta_Flat, format = "f", digits = 3),
+                         Bias_Eta_Gamma_Flat = formatC(Bias_Eta_Gamma_Flat, format = "f", digits = 3),
+                         MSE_Eta_Gamma_Flat = formatC(MSE_Eta_Gamma_Flat, format = "f", digits = 3),
+                         Bias_All_Flat = formatC(Bias_All_Flat, format = "f", digits = 3),
+                         MSE_All_Flat = formatC(MSE_All_Flat, format = "f", digits = 3)
+                       )),
+      type = "latex", include.rownames = FALSE)
 
 # ------------------------------------------------------------------------------
 # Plot boxplots
@@ -347,46 +378,93 @@ print(xtable::xtable(order_error_df %>%
 
 
 # ------------------------------------------------------------------------------
-# Plot posterior distributions for a given simulation
+# Plot distributions for a given simulation
 # ------------------------------------------------------------------------------
 
 sim <- 5  # choose which simulation to plot
 
-plots_sce_eta <- lapply(1:length(sim_sces), function(i) {
-  plot_sim_delta(i, sim = sim, sim_sces = sim_sces)
-})
+sce3_priors <- list(
+  list(
+    sim3.1, sim3.1_eta_flat, sim3.1_eta_gamma_flat, sim3.1_all_flat
+  ),
+  list(
+    sim3.2, sim3.2_eta_flat, sim3.2_eta_gamma_flat, sim3.2_all_flat
+  ),
+  list(
+     sim3.3, sim3.3_eta_flat, sim3.3_eta_gamma_flat, sim3.3_all_flat
+  )
+)
 
-lapply(1:4, function(i) {
-  sce_plots <- lapply(1:3, function(j) {
-    plots_sce_eta[[(i-1)*3 + j]]
-  })
-  combined_plot <- Reduce(`/`, sce_plots)
-  sce <- as.roman(i)
-  ggsave(paste0("results/figures/bin/post_eta_sce_", sce, "_bin.pdf"), combined_plot, width = 10, height = 12, dpi = 300)
+plots_sce3_eta <- lapply(1:3, function(i) {
+  plot_sce3_eta(i, sim = sim, sim_sces = sce3_priors)
 })
+ggsave("results/figures/bin/post_eta_sce_III_priors_bin.pdf", 
+        wrap_plots(plots_sce3_eta, ncol = 1), width = 10, height = 12, dpi = 300)
 
-plots_sce_theta <- lapply(1:length(sim_sces), function(i) {
-  plot_sim_theta(i, sim = sim, sim_sces = sim_sces)
+plots_sce3_theta <- lapply(1:3, function(i) {
+  plot_sce3_theta(i, sim = sim, sim_sces = sce3_priors)
 })
-
-lapply(1:4, function(i) {
-  sce_plots <- lapply(1:3, function(j) {
-    plots_sce_theta[[(i-1)*3 + j]]
-  })
-  combined_plot <- Reduce(`/`, sce_plots)
-  sce <- as.roman(i)
-  ggsave(paste0("results/figures/bin/post_theta_sce_", sce, "_bin.pdf"), combined_plot, width = 10, height = 12, dpi = 300)
-})
+ggsave("results/figures/bin/post_theta_sce_III_priors_bin.pdf", 
+       wrap_plots(plots_sce3_theta, ncol = 1), width = 10, height = 8, dpi = 300)
 
 
-plots_sce_eta_os <- lapply(1:length(sim_sces_os), function(i) {
-  plot_sim_delta(i, sim = sim, sim_sces = sim_sces_os)
-})
-lapply(3, function(i) {
-  sce_plots <- lapply(1:3, function(j) {
-    plots_sce_eta_os[[(i-1)*3 + j]]
-  })
-  combined_plot <- Reduce(`/`, sce_plots)
-  sce <- as.roman(i)
-  ggsave(paste0("results/figures/bin/post_eta_sce_", sce, "_bin_os.pdf"), combined_plot, width = 10, height = 12, dpi = 300)
-})
+samples_sce3_eta_prior <- list(
+    samples_prior_sce3.1,
+    samples_prior_sce3.1_eta_flat,
+    samples_prior_sce3.1_eta_gamma_flat,
+    samples_prior_sce3.1_all_flat
+)
+
+plots_eta_prior <- plot_eta_prior(samples_sce3_eta_prior)
+ggsave("results/figures/bin/prior_eta_priors_bin.pdf", 
+       plots_eta_prior, width = 10, height = 6, dpi = 300)
+
+samples_sce3_theta_prior <- list(
+    rbeta(8000, sce3.1$a, sce3.1$b),
+    rbeta(8000, sce3.1_eta_flat$a, sce3.1_eta_flat$b),
+    rbeta(8000, sce3.1_eta_gamma_flat$a, sce3.1_eta_gamma_flat$b),
+    rbeta(8000, sce3.1_all_flat$a, sce3.1_all_flat$b)
+)
+plots_theta_prior <- plot_theta_prior(samples_sce3_theta_prior)
+plots_theta_prior
+ggsave("results/figures/bin/prior_theta_priors_bin.pdf", 
+       plots_theta_prior, width = 10, height = 3, dpi = 300)
+
+# plots_sce_eta <- lapply(1:length(sim_sces), function(i) {
+#   plot_sim_delta(i, sim = sim, sim_sces = sim_sces)
+# })
+
+# lapply(1:4, function(i) {
+#   sce_plots <- lapply(1:3, function(j) {
+#     plots_sce_eta[[(i-1)*3 + j]]
+#   })
+#   combined_plot <- Reduce(`/`, sce_plots)
+#   sce <- as.roman(i)
+#   ggsave(paste0("results/figures/bin/post_eta_sce_", sce, "_bin.pdf"), combined_plot, width = 10, height = 12, dpi = 300)
+# })
+
+# plots_sce_theta <- lapply(1:length(sim_sces), function(i) {
+#   plot_sim_theta(i, sim = sim, sim_sces = sim_sces)
+# })
+
+# lapply(1:4, function(i) {
+#   sce_plots <- lapply(1:3, function(j) {
+#     plots_sce_theta[[(i-1)*3 + j]]
+#   })
+#   combined_plot <- Reduce(`/`, sce_plots)
+#   sce <- as.roman(i)
+#   ggsave(paste0("results/figures/bin/post_theta_sce_", sce, "_bin.pdf"), combined_plot, width = 10, height = 12, dpi = 300)
+# })
+
+
+# plots_sce_eta_os <- lapply(1:length(sim_sces_os), function(i) {
+#   plot_sim_delta(i, sim = sim, sim_sces = sim_sces_os)
+# })
+# lapply(3, function(i) {
+#   sce_plots <- lapply(1:3, function(j) {
+#     plots_sce_eta_os[[(i-1)*3 + j]]
+#   })
+#   combined_plot <- Reduce(`/`, sce_plots)
+#   sce <- as.roman(i)
+#   ggsave(paste0("results/figures/bin/post_eta_sce_", sce, "_bin_os.pdf"), combined_plot, width = 10, height = 12, dpi = 300)
+# })
