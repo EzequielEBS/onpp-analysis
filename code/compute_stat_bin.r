@@ -98,7 +98,7 @@ coverages_50 <- lapply(1:length(bcis_50), function(i) {
 })
 
 # compute WIS
-quantile_level <- c(0.05, 0.1, 0.2, 0.5, 0.8, 0.9, 0.95)
+quantile_level <- c(0.025, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.975)
 wis_list <- lapply(sim_sces, function(sim) {
   compute_wis(sim$theta, quantile_level, true_value)
 })
