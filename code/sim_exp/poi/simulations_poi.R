@@ -15,8 +15,8 @@ library(latex2exp)
 source("code/aux_fun_sim.R")
 
 # Compile the model
-gamma_model_poi <- cmdstan_model("code/gamma_poi.stan")
-delta_model_poi <- cmdstan_model("code/delta_poi.stan")
+gamma_model_poi <- cmdstan_model("code/models/poi/gamma_poi.stan")
+delta_model_poi <- cmdstan_model("code/models/poi/delta_poi.stan")
 
 #-------------------------------------------------------------------------------
 # Run simulations for the Poisson model

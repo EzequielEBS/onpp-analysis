@@ -12,8 +12,8 @@ library(latex2exp)
 source("code/aux_fun_sim.R")
 
 # Compile the model
-gamma_model_normal <- cmdstan_model("code/models/normal_fixed_var_onpp.stan")
-delta_model_normal <- cmdstan_model("code/models/normal_fixed_var_npp.stan")
+gamma_model_normal <- cmdstan_model("code/models/normal/normal_fixed_var_onpp.stan")
+delta_model_normal <- cmdstan_model("code/models/normal/normal_fixed_var_npp.stan")
 
 #-------------------------------------------------------------------------------
 # Run simulations for the normal model with fixed variance

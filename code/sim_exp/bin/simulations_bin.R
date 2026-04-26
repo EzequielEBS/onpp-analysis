@@ -13,8 +13,8 @@ library(latex2exp)
 source("code/aux_fun_sim.R")
 
 # Compile the model
-gamma_model_bin <- cmdstan_model("code/models/gamma_bin.stan")
-delta_model_bin <- cmdstan_model("code/models/delta_bin.stan")
+gamma_model_bin <- cmdstan_model("code/models/bin/gamma_bin.stan")
+delta_model_bin <- cmdstan_model("code/models/bin/delta_bin.stan")
 
 #-------------------------------------------------------------------------------
 # Run simulations for the binomial model with different scenarios

@@ -13,8 +13,8 @@ library(qs2)
 # run auxiliary functions
 source("code/aux_fun_sim.R")
 
-gamma_model_lm <- cmdstan_model("code/models/gamma_lm.stan")
-delta_model_lm <- cmdstan_model("code/models/delta_lm.stan")
+gamma_model_lm <- cmdstan_model("code/models/lm/gamma_lm.stan")
+delta_model_lm <- cmdstan_model("code/models/lm/delta_lm.stan")
 
 sce1.1 <- qs_read("results/sim_data/lm/sceI_I.qs2")
 sce1.2 <- qs_read("results/sim_data/lm/sceI_II.qs2")
