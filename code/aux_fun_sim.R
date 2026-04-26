@@ -760,12 +760,25 @@ sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model){
   stopCluster(cl)
   
   # combine results
-  hattheta <- data.frame(
-    hattheta_npp = sapply(results, function(x) x$hattheta_npp),
-    hattheta_nppseq = sapply(results, function(x) x$hattheta_nppseq),
-    hattheta_onpp = sapply(results, function(x) x$hattheta_onpp),
-    hattheta_onppseq = sapply(results, function(x) x$hattheta_onppseq)
-  )
+  if (model == "lm") {
+    hattheta <- list()
+    for (i in 1:length(results[[1]]$hattheta_npp)){
+      hattheta[[i]] <- data.frame(
+        hattheta_npp = sapply(results, function(x) x$hattheta_npp[i]),
+        hattheta_nppseq = sapply(results, function(x) x$hattheta_nppseq[i]),
+        hattheta_onpp = sapply(results, function(x) x$hattheta_onpp[i]),
+        hattheta_onppseq = sapply(results, function(x) x$hattheta_onppseq[i])
+      )
+    }
+  } else{
+    hattheta <- data.frame(
+      hattheta_npp = sapply(results, function(x) x$hattheta_npp),
+      hattheta_nppseq = sapply(results, function(x) x$hattheta_nppseq),
+      hattheta_onpp = sapply(results, function(x) x$hattheta_onpp),
+      hattheta_onppseq = sapply(results, function(x) x$hattheta_onppseq)
+    )
+  }
+  
   
   divergences <- data.frame(divergences_npp = sum(sapply(results, function(x) x$divergences$divergences_npp)),
                             divergences_nppseq = sum(sapply(results, function(x) x$divergences$divergences_nppseq)),
@@ -998,67 +1011,34 @@ compute_wis <- function(list_draws, quantile_level, true_value) {
 }
 
 compute_wis_lm <- function(list_draws, quantile_level, true_value) {
-  N <- length(list_draws)
-  q_npp <- lapply(1:(ncol(list_draws[[1]]$draws_beta_npp) + 1), function(j) {
-    if (j <= ncol(list_draws[[1]]$draws_beta_npp)) {
-      do.call(rbind,
-              lapply(list_draws, function(x) {
-                quantile(x$draws_beta_npp[, j], probs = quantile_level)
-              })
+  N <- length(list_draws$theta)
+  q_npp <- lapply(1:ncol(list_draws$theta[[1]]$theta_npp), function(j) {
+    do.call(rbind,
+            lapply(list_draws$theta, function(x) {
+              quantile(x$theta_npp[, j], probs = quantile_level)
+            })
       )
-    } else {
-      do.call(rbind,
-              lapply(list_draws, function(x) {
-                quantile(x$draws_sigma_npp, probs = quantile_level)
-              })
-      )
-    }
   })
-  q_nppseq <- lapply(1:(ncol(list_draws[[1]]$draws_beta_nppseq) + 1), function(j) {
-    if (j <= ncol(list_draws[[1]]$draws_beta_nppseq)) {
-      do.call(rbind,
-              lapply(list_draws, function(x) {
-                quantile(x$draws_beta_nppseq[, j], probs = quantile_level)
-              })
-      )
-    } else {
-      do.call(rbind,
-              lapply(list_draws, function(x) {
-                quantile(x$draws_sigma_nppseq, probs = quantile_level)
-              })
-      )
-    }
-  }
-  )
-  q_onpp <- lapply(1:(ncol(list_draws[[1]]$draws_beta_onpp) + 1), function(j) {
-    if (j <= ncol(list_draws[[1]]$draws_beta_onpp)) {
-      do.call(rbind,
-              lapply(list_draws, function(x) {
-                quantile(x$draws_beta_onpp[, j], probs = quantile_level)
-              })
-      )
-    } else {
-      do.call(rbind,
-              lapply(list_draws, function(x) {
-                quantile(x$draws_sigma_onpp, probs = quantile_level)
-              })
-      )
-    }
+  q_nppseq <- lapply(1:ncol(list_draws$theta[[1]]$theta_nppseq), function(j) {
+    do.call(rbind,
+            lapply(list_draws$theta, function(x) {
+              quantile(x$theta_nppseq[, j], probs = quantile_level)
+            })
+    )
   })
-  q_onppseq <- lapply(1:(ncol(list_draws[[1]]$draws_beta_onppseq) + 1), function(j) {
-    if (j <= ncol(list_draws[[1]]$draws_beta_onppseq)) {
-      do.call(rbind,
-              lapply(list_draws, function(x) {
-                quantile(x$draws_beta_onppseq[, j], probs = quantile_level)
-              })
-      )
-    } else {
-      do.call(rbind,
-              lapply(list_draws, function(x) {
-                quantile(x$draws_sigma_onppseq, probs = quantile_level)
-              })
-      )
-    }
+  q_onpp <- lapply(1:ncol(list_draws$theta[[1]]$theta_onpp), function(j) {
+    do.call(rbind,
+            lapply(list_draws$theta, function(x) {
+              quantile(x$theta_onpp[, j], probs = quantile_level)
+            })
+    )
+  })
+  q_onppseq <- lapply(1:ncol(list_draws$theta[[1]]$theta_onppseq), function(j) {
+    do.call(rbind,
+            lapply(list_draws$theta, function(x) {
+              quantile(x$theta_onppseq[, j], probs = quantile_level)
+            })
+    )
   })
   wis_npp <- unlist(lapply(1:length(q_npp), function(i) {
     mean(wis(rep(true_value[i], N), q_npp[[i]], quantile_level))

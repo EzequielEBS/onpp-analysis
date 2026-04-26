@@ -9,22 +9,24 @@ library(patchwork)
 library(parallel)
 library(latex2exp)
 library(scoringutils)
+library(qs2)
 
 # run auxiliary functions
 source("code/aux_fun_sim.R")
 
-sim1.1 <- readRDS("results/samples/lm/sce_I_I.rds")
-sim1.2 <- readRDS("results/samples/lm/sce_I_II.rds")
-sim1.3 <- readRDS("results/samples/lm/sce_I_III.rds")
-sim2.1 <- readRDS("results/samples/lm/sce_II_I.rds")
-sim2.2 <- readRDS("results/samples/lm/sce_II_II.rds")
-sim2.3 <- readRDS("results/samples/lm/sce_II_III.rds")
-sim3.1 <- readRDS("results/samples/lm/sce_III_I.rds")
-sim3.2 <- readRDS("results/samples/lm/sce_III_II.rds")
-sim3.3 <- readRDS("results/samples/lm/sce_III_III.rds")
-sim4.1 <- readRDS("results/samples/lm/sce_IV_I.rds")
-sim4.2 <- readRDS("results/samples/lm/sce_IV_II.rds")
-sim4.3 <- readRDS("results/samples/lm/sce_IV_III.rds")
+load("../../simulated-data-regression/data/true_params.RData")
+sim1.1 <- qs_read("results/samples/lm/sim1_1_lm.qs2")
+sim1.2 <- qs_read("results/samples/lm/sim1_2_lm.qs2")
+sim1.3 <- qs_read("results/samples/lm/sim1_3_lm.qs2")
+sim2.1 <- qs_read("results/samples/lm/sim2_1_lm.qs2")
+sim2.2 <- qs_read("results/samples/lm/sim2_2_lm.qs2")
+sim2.3 <- qs_read("results/samples/lm/sim2_3_lm.qs2")
+sim3.1 <- qs_read("results/samples/lm/sim3_1_lm.qs2")
+sim3.2 <- qs_read("results/samples/lm/sim3_2_lm.qs2")
+sim3.3 <- qs_read("results/samples/lm/sim3_3_lm.qs2")
+sim4.1 <- qs_read("results/samples/lm/sim4_1_lm.qs2")
+sim4.2 <- qs_read("results/samples/lm/sim4_2_lm.qs2")
+sim4.3 <- qs_read("results/samples/lm/sim4_3_lm.qs2")
 
 sim_sces <- list(
   sim1.1, sim1.2, sim1.3,
@@ -33,29 +35,29 @@ sim_sces <- list(
   sim4.1, sim4.2, sim4.3
 )
 
-betastar <- c(1, -0.5, 0.5)
+betastar <- beta[[1]]
 sgstar <- 1
 
-hat_par_sces <- lapply(sim_sces, get_hat_par)
+# hat_par_sces <- lapply(sim_sces, get_hat_par)
 
-plots_sce_lm <- lapply(1:length(hat_par_sces), function(j) {
-  plot_sce_lm(j, hat_par_sces)
-})
-lapply(1:4, function(i) {
-  sce_plots <- unlist(lapply(1:3, function(j) {
-    plots_sce_lm[[(i-1)*3 + j]]
-  }), recursive = FALSE)
-  combined_plot <- patchwork::wrap_plots(sce_plots, ncol = 1)
-  sce <- as.roman(i)
-  ggsave(filename = paste0("results/figures/lm/boxplot_sce_", sce, "_lm.pdf"),
-         plot = combined_plot,
-         width = 10, height = 13)
-})
+# plots_sce_lm <- lapply(1:length(hat_par_sces), function(j) {
+#   plot_sce_lm(j, hat_par_sces)
+# })
+# lapply(1:4, function(i) {
+#   sce_plots <- unlist(lapply(1:3, function(j) {
+#     plots_sce_lm[[(i-1)*3 + j]]
+#   }), recursive = FALSE)
+#   combined_plot <- patchwork::wrap_plots(sce_plots, ncol = 1)
+#   sce <- as.roman(i)
+#   ggsave(filename = paste0("results/figures/lm/boxplot_sce_", sce, "_lm.pdf"),
+#          plot = combined_plot,
+#          width = 10, height = 13)
+# })
   
 
 # Compute MSE
 true_value <- c(betastar, sgstar)
-mses <- lapply(hat_par_sces, function(sim) {
+mses <- lapply(sim_sces, function(sim) {
   colSums(
     do.call(rbind, lapply(seq_along(sim$hattheta), function(i) {
       colMeans((sim$hattheta[[i]] - true_value[i])^2)
@@ -63,13 +65,13 @@ mses <- lapply(hat_par_sces, function(sim) {
   )
 })
 
-biass <- lapply(hat_par_sces, function(sim) {
+biass <- lapply(sim_sces, function(sim) {
   do.call(rbind, lapply(seq_along(sim$hattheta), function(i) {
     colMeans((sim$hattheta[[i]] - true_value[i]))
   }))
 })
 
-quantile_level <- c(0.05, 0.1, 0.2, 0.5, 0.8, 0.9, 0.95)
+quantile_level <- c(0.025, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.975)
 wis_list <- lapply(sim_sces, function(sim) {
   compute_wis_lm(sim, quantile_level, true_value)
 })
