@@ -503,7 +503,7 @@ sample_sce_normal_fixed_var <- function(par_list, gamma_model, delta_model, post
   ))
 }
 
-sample_sce_lm <- function(par_list, data, gamma_model, delta_model, post = 1){
+sample_sce_lm <- function(par_list, data, gamma_model, delta_model){
   X0 <- data$X0_flat
   startid_X0 <- data$startid_X0
   n0 <- as.vector(data$dims_y0[,1]) 
@@ -524,6 +524,12 @@ sample_sce_lm <- function(par_list, data, gamma_model, delta_model, post = 1){
   tilde_a <- par_list$tilde_a
   tilde_b <- par_list$tilde_b
   alpha <- par_list$alpha
+
+  if (is.null(par_list$post)) {
+    post <- 1
+  } else {
+    post <- par_list$post
+  }
 
   # define data list
   data_onpp <- list(
@@ -1476,9 +1482,9 @@ plot_sce3_eta <- function(sub_sce, sim, sim_sces){
   sim_sub_sce <- sim_sces[[sub_sce]]
   plots_npp <- lapply(1:length(sim_sub_sce), function(i) {
     plot <- ggplot() +
-      geom_density(aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
-      geom_density(aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
-      geom_density(aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
       scale_color_manual(name = NULL, 
                          values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
                                     "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
@@ -1502,9 +1508,9 @@ plot_sce3_eta <- function(sub_sce, sim, sim_sces){
   
   plots_onpp <- lapply(1:length(sim_sub_sce), function(i) {
     plot <- ggplot() +
-      geom_density(aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
-      geom_density(aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
-      geom_density(aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
       scale_color_manual(name = NULL, 
                          values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
                                     "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
@@ -1530,9 +1536,9 @@ plot_sce3_eta <- function(sub_sce, sim, sim_sces){
 plot_eta_prior <- function(samples){
   plots_npp <- lapply(1:length(samples), function(i) {
     plot <- ggplot() +
-      geom_density(aes(x = samples[[i]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
-      geom_density(aes(x = samples[[i]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
-      geom_density(aes(x = samples[[i]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = samples[[i]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = samples[[i]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = samples[[i]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
       scale_color_manual(name = NULL, 
                          values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
                                     "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
@@ -1556,9 +1562,9 @@ plot_eta_prior <- function(samples){
   
   plots_onpp <- lapply(1:length(samples), function(i) {
     plot <- ggplot() +
-      geom_density(aes(x = samples[[i]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
-      geom_density(aes(x = samples[[i]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
-      geom_density(aes(x = samples[[i]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = samples[[i]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = samples[[i]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = samples[[i]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
       scale_color_manual(name = NULL, 
                          values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
                                     "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
@@ -1577,8 +1583,8 @@ plot_eta_prior <- function(samples){
 
   plots_onpp_gamma <- lapply(1:length(samples), function(i) {
     plot <- ggplot() +
-      geom_density(aes(x = samples[[i]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
-      geom_density(aes(x = samples[[i]]$delta_onpp[,2] - samples[[i]]$delta_onpp[,1], 
+      geom_density(bounds = c(0, 1), aes(x = samples[[i]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
+      geom_density(bounds = c(0, 1), aes(x = samples[[i]]$delta_onpp[,2] - samples[[i]]$delta_onpp[,1], 
         color = "delta2"), linewidth = 0.8) +
       geom_density(aes(x = samples[[i]]$delta_onpp[,3] - samples[[i]]$delta_onpp[,2], 
         color = "delta3"), linewidth = 0.8) +
