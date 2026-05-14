@@ -58,6 +58,12 @@ sgstar <- 1
 # Compute MSE
 true_value <- c(betastar, sgstar)
 mses <- lapply(sim_sces, function(sim) {
+  n_sim <- nrow(sim$hattheta[[1]])
+  lapply(1:n_sim, function(i) {
+    lapply(seq_along(sim$hattheta), function(j) {
+      (sim$hattheta[[j]][i,] - true_value[j])^2
+    }) %>% do.call(rbind, .) %>% colSums()
+  }) %>% do.call(rbind, .) %>% colMeans()
   colSums(
     do.call(rbind, lapply(seq_along(sim$hattheta), function(i) {
       colMeans((sim$hattheta[[i]] - true_value[i])^2)

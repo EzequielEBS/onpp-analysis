@@ -63,11 +63,11 @@ prepare_data_stan <- function(data) {
 #-------------------------------------------------------------------------------
 
 num_sim <- 200
-data_high_cong <- read_csv("../simulated-data-regression/data/sim_data_high_cong_p3.csv") %>%
+data_high_cong <- read_csv("../../simulated-data-regression/data/sim_data_high_cong_varying_beta_p3.csv") %>%
   filter(replicate <= num_sim)
-data_small_cong <- read_csv("../simulated-data-regression/data/sim_data_small_cong_p3.csv") %>%
+data_small_cong <- read_csv("../../simulated-data-regression/data/sim_data_small_cong_varying_beta_p3.csv") %>%
   filter(replicate <= num_sim)
-data_no_cong <- read_csv("../simulated-data-regression/data/sim_data_no_cong_p3.csv") %>%
+data_no_cong <- read_csv("../../simulated-data-regression/data/sim_data_no_cong_varying_beta_p3.csv") %>%
   filter(replicate <= num_sim)
 data_list <- list(
   data_high_cong,
@@ -118,12 +118,14 @@ sce1.3 <- list(
 
 # change order
 data_sce2.1 <- lapply(data_list, function(df) { 
-  df$data_id[df$data_id == "hist_3"] <- "temp"
-  df$data_id[df$data_id == "hist_2"] <- "hist_3"
-  df$data_id[df$data_id == "temp"] <- "hist_2"
-  return(df)
+  idx2 <- df$data_id == "hist2"
+  idx3 <- df$data_id == "hist3"
+  
+  df$data_id[idx2] <- "hist3"
+  df$data_id[idx3] <- "hist2"
+  
+  df
 })
-
 sce2.1 <- list(
   par = list(
     p = 3,
@@ -165,10 +167,13 @@ sce2.3 <- list(
 )
 
 data_sce3.1 <- lapply(data_list, function(df) { 
-  df$data_id[df$data_id == "hist_3"] <- "temp"
-  df$data_id[df$data_id == "hist_1"] <- "hist_3"
-  df$data_id[df$data_id == "temp"] <- "hist_1"
-  return(df)
+  idx3 <- df$data_id == "hist_3"
+  idx1 <- df$data_id == "hist_1"
+  
+  df$data_id[idx3] <- "hist_1"
+  df$data_id[idx1] <- "hist_3"
+
+  df
 })
 sce3.1 <- list(
   par = list(
@@ -210,11 +215,11 @@ sce3.3 <- list(
   data = prepare_data_stan(data_sce3.1[[3]])
 )
 
-data_high_cong_neutral <- read_csv("../simulated-data-regression/data/sim_data_high_cong_neutral_p3.csv") %>%
+data_high_cong_neutral <- read_csv("../../simulated-data-regression/data/sim_data_high_cong_neutral_varying_beta_p3.csv") %>%
   filter(replicate <= num_sim)
-data_small_cong_neutral <- read_csv("../simulated-data-regression/data/sim_data_small_cong_neutral_p3.csv") %>%
+data_small_cong_neutral <- read_csv("../../simulated-data-regression/data/sim_data_small_cong_neutral_varying_beta_p3.csv") %>%
   filter(replicate <= num_sim)
-data_no_cong_neutral <- read_csv("../simulated-data-regression/data/sim_data_no_cong_neutral_p3.csv") %>%
+data_no_cong_neutral <- read_csv("../../simulated-data-regression/data/sim_data_no_cong_neutral_varying_beta_p3.csv") %>%
   filter(replicate <= num_sim)
 
 sce4.1 <- list(

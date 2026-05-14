@@ -23,8 +23,7 @@ data {
   real<lower=0> b; // prior scale
   matrix[p,p] V0; // prior precision
   vector[p] mu0; // prior mean
-  real<lower=0> tilde_a;
-  real<lower=0> tilde_b;
+  vector[K+1] alpha; // prior concentration
   int<lower=0, upper=1> post;
   int<lower=0, upper=1> seq;
 }
@@ -46,12 +45,14 @@ transformed data {
 }
 
 parameters {
-  vector<lower=0, upper=1>[K] delta;
+  simplex[K+1] gamma; 
 }
 
 transformed parameters {
+  vector[K] delta = cumulative_sum(gamma[1:K]);
+  
   // Build default parameters
-  real<lower=0> nu0 = n0_vec'* delta*0.5 + a;
+  real<lower=0> nu0 = 0.5 * n0_vec'* delta + a;
   matrix[p,p] Lambda0 = V0;
   vector[p] tilde_beta00 = V0 * mu0;
   for (k in 1:K) {
@@ -86,13 +87,13 @@ transformed parameters {
     matrix[p,p] inv_Lambda0kstar = inverse_spd(Lambda0kstar);
     sum_X0ky0kdeltak += prod_tX0k_y0k[,k]*delta[k];
     sum_Lambda0kstar += Lambda0kstar;
-    H0kstar[k] = b + delta[k]*0.5 * (S0[k] + (mu0 - hat_beta0[,k])' *
+    H0kstar[k] = b + 0.5*delta[k] * (S0[k] + (mu0 - hat_beta0[,k])' *
                                             (X0k' * X0k) *
                                             inv_Lambda0kstar *
                                             V0 *
                                             (mu0 - hat_beta0[,k])
                                     );
-    nu0kstar[k] = n0[k] * delta[k] / 2 + a;
+    nu0kstar[k] = n0[k] * delta[k] * 0.5 + a;
     H0star += H0kstar[k] + 0.5 * (V0*mu0 + prod_tX0k_y0k[,k]*delta[k])' *
                                   inv_Lambda0kstar *
                                   (V0*mu0 + prod_tX0k_y0k[,k]*delta[k]);
@@ -119,10 +120,7 @@ transformed parameters {
 
 model {
   // prior
-  for (k in 1:K) {
-    target += beta_lpdf(delta[k] | tilde_a, tilde_b);
-  }
-  
+  target += dirichlet_lpdf(gamma | alpha);
   
   // Likelihood term 
   if (post == 1){
@@ -187,7 +185,7 @@ generated quantities {
       scale = b;
     }
   }
-   
+  
   vector[p] beta = multi_student_t_rng(df, tilde_beta, Sigma);
   real<lower=0> sigma = inv_gamma_rng(shape, scale);
   vector[p+1] theta = append_row(beta, sigma);
