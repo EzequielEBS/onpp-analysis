@@ -22,8 +22,8 @@ delta_model_normal <- cmdstan_model("code/models/normal/normal_fixed_var_npp.sta
 # define scenarios
 ## compatible order
 ### compatible order and high congruence
-sce1.1 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce1.1 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -35,8 +35,8 @@ sce1.1 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ### compatible order and small congruence
-sce1.2 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce1.2 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -48,8 +48,8 @@ sce1.2 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ### compatible order and no congruence 
-sce1.3 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce1.3 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -63,8 +63,8 @@ sce1.3 <- list(n0 = c(100, 100, 100),
 
 ## almost compatible order
 ### almost compatible order and high congruence
-sce2.1 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce2.1 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -76,8 +76,8 @@ sce2.1 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ### almost compatible order and small congruence
-sce2.2 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce2.2 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -89,8 +89,8 @@ sce2.2 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ### almost compatible order and no congruence
-sce2.3 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce2.3 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -104,8 +104,8 @@ sce2.3 <- list(n0 = c(100, 100, 100),
 
 ## incompatible order
 ### incompatible order and huge congruence
-sce3.1 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce3.1 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -117,8 +117,8 @@ sce3.1 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ### incompatible order and small congruence
-sce3.2 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce3.2 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -130,8 +130,8 @@ sce3.2 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ### incompatible order and no congruence
-sce3.3 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce3.3 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -145,8 +145,8 @@ sce3.3 <- list(n0 = c(100, 100, 100),
 
 ## neutral order
 ### neutral order and huge congruence
-sce4.1 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce4.1 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -158,8 +158,8 @@ sce4.1 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ### neutral order and small congruence
-sce4.2 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce4.2 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -171,8 +171,8 @@ sce4.2 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ### neutral order and no congruence
-sce4.3 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce4.3 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -184,8 +184,8 @@ sce4.3 <- list(n0 = c(100, 100, 100),
               alpha = rep(1/4, 4)
 )
 ## cancellation effect
-sce5.1 <- list(n0 = c(100, 100, 100),
-              n = 100,
+sce5.1 <- list(n0 = c(50, 50, 50),
+              n = 50,
               sigma0 = 1,
               sigmah = c(1, 1, 1),
               sigma = 1,
@@ -201,30 +201,40 @@ sce5.1 <- list(n0 = c(100, 100, 100),
 n_cores <- 15
 n_sim <- 200
 sim1.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce1.1, gamma_model_normal, delta_model_normal)
-sim1.2 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce1.2, gamma_model_normal, delta_model_normal)
-sim1.3 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce1.3, gamma_model_normal, delta_model_normal)
-sim2.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce2.1, gamma_model_normal, delta_model_normal)
-sim2.2 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce2.2, gamma_model_normal, delta_model_normal)
-sim2.3 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce2.3, gamma_model_normal, delta_model_normal)
-sim3.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce3.1, gamma_model_normal, delta_model_normal)
-sim3.2 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce3.2, gamma_model_normal, delta_model_normal)
-sim3.3 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce3.3, gamma_model_normal, delta_model_normal)
-sim4.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce4.1, gamma_model_normal, delta_model_normal)
-sim4.2 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce4.2, gamma_model_normal, delta_model_normal)
-sim4.3 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce4.3, gamma_model_normal, delta_model_normal)
-sim5.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce5.1, gamma_model_normal, delta_model_normal)
-
-# save results
 qs2::qs_save(sim1.1, file = "results/samples/normal/sim1_1_normal_fixed_var.qs2")
+
+sim1.2 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce1.2, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim1.2, file = "results/samples/normal/sim1_2_normal_fixed_var.qs2")
+
+sim1.3 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce1.3, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim1.3, file = "results/samples/normal/sim1_3_normal_fixed_var.qs2")
+
+sim2.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce2.1, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim2.1, file = "results/samples/normal/sim2_1_normal_fixed_var.qs2")
+
+sim2.2 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce2.2, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim2.2, file = "results/samples/normal/sim2_2_normal_fixed_var.qs2")
+
+sim2.3 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce2.3, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim2.3, file = "results/samples/normal/sim2_3_normal_fixed_var.qs2")
+
+sim3.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce3.1, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim3.1, file = "results/samples/normal/sim3_1_normal_fixed_var.qs2")
+
+sim3.2 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce3.2, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim3.2, file = "results/samples/normal/sim3_2_normal_fixed_var.qs2")
+
+sim3.3 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce3.3, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim3.3, file = "results/samples/normal/sim3_3_normal_fixed_var.qs2")
+
+sim4.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce4.1, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim4.1, file = "results/samples/normal/sim4_1_normal_fixed_var.qs2")
+
+sim4.2 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce4.2, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim4.2, file = "results/samples/normal/sim4_2_normal_fixed_var.qs2")
+
+sim4.3 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce4.3, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim4.3, file = "results/samples/normal/sim4_3_normal_fixed_var.qs2")
+
+sim5.1 <- sim_sce(model = "normal_fixed_var", n_cores,  n_sim, sce5.1, gamma_model_normal, delta_model_normal)
 qs2::qs_save(sim5.1, file = "results/samples/normal/sim5_1_normal_fixed_var.qs2")

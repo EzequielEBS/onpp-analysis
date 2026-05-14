@@ -30,7 +30,6 @@ transformed data {
 
 parameters {
   array[K+1] real<lower=0> raw_gamma; // raw parameters for gamma
-  real theta; // parameter of interest
 }
 
 transformed parameters {
@@ -48,48 +47,78 @@ model {
   target += gamma_lpdf(raw_gamma | alpha, 1);
 
   if (seq == 1) {
-    // real v0;
-    // real m0;
-    // v0 = 0;
-    // m0 = 0;
+    real v0;
+    real m0;
+    v0 = 0;
+    m0 = 0;
     for (i in 1:K) {
       real v0k;
       real m0k;
       v0k = (1/sigma0^2 + delta[i] * n0l[i] / sigmahl[i]^2)^(-1);
       m0k = v0k * (mu0/sigma0^2 + delta[i] * sum_y0[i] / sigmahl[i]^2);
-      target += normal_lpdf(theta | m0k, sqrt(v0k));
-      // v0 += (1/v0k);
-      // m0 += m0k / v0k;
+      // target += normal_lpdf(theta | m0k, sqrt(v0k));
+      v0 += (1/v0k);
+      m0 += m0k / v0k;
       // constant
-      // target += -0.5 * log(2 * pi() * v0k);
-      // target += -0.5 * m0k^2 / v0k;
-
+      target += -0.5 * m0k^2 / v0k - 0.5 * log(v0k);
     }
-    // v0 = 1 / v0;
-    // m0 = v0 * m0;
-    // real v;
-    // real m;
-    // v = (1/v0 + n / sigma^2)^(-1);
-    // m = v * (m0 / v0 + sum(y) / sigma^2);
+    v0 = v0^(-1);
+    real v;
+    real m;
+    v = (1/v0 + n / sigma^2)^(-1);
+    m = v * (m0 + sum(y) / sigma^2);
     // target += normal_lpdf(theta | m, sqrt(v));
     // // constant
-    // target += 0.5 * m0^2 / v0 + 0.5 * m^2 / v;
-    // target += -0.5 * log(2 * pi() * v);
-    target += normal_lpdf(y | theta, sigma);
+    target += 0.5 * m^2 / v + 0.5 * log(v);
+    // target += normal_lpdf(y | theta, sigma);
   } else {
     // non-sequential model
     real v0;
     real m0;
-    // real v;
-    // real m;
+    real v;
+    real m;
     v0 = 1 / (1/sigma0^2 + sum(delta .* n0l ./ sigmahl^2));
     m0 = v0 * (mu0/sigma0^2 + sum(delta .* sum_y0 ./ sigmahl));
-    target += normal_lpdf(theta | m0, sqrt(v0));
-    target += normal_lpdf(y | theta, sigma);
-    // v = (1/v0 + n / sigma^2)^(-1);
-    // m = v * (m0 / v0 + sum(y) / sigma^2);
+    // target += normal_lpdf(theta | m0, sqrt(v0));
+    // target += normal_lpdf(y | theta, sigma);
+    v = (1/v0 + n / sigma^2)^(-1);
+    m = v * (m0 / v0 + sum(y) / sigma^2);
     // target += normal_lpdf(theta | m, sqrt(v));
-    // target += -0.5 * log(v0);
-    // target += 0.5 * m^2/v + 0.5 * log(v);
+    target += -0.5 * m0^2 / v0 - 0.5 * log(v0);
+    target += 0.5 * m^2/v + 0.5 * log(v);
   }
+}
+
+generated quantities {
+  real theta;
+  real v;
+  real m;
+
+  if (seq == 1) {
+    real v0;
+    real m0;
+    v0 = 0;
+    m0 = 0;
+    for (i in 1:K) {
+      real v0k;
+      real m0k;
+      v0k = (1/sigma0^2 + delta[i] * n0l[i] / sigmahl[i]^2)^(-1);
+      m0k = v0k * (mu0/sigma0^2 + delta[i] * sum_y0[i] / sigmahl[i]^2);
+      v0 += (1/v0k);
+      m0 += m0k / v0k;
+    }
+    v0 = v0^(-1);
+    v = (1/v0 + n / sigma^2)^(-1);
+    m = v * (m0 + sum(y) / sigma^2);
+  } else {
+    // non-sequential model
+    real v0;
+    real m0;
+    v0 = 1 / (1/sigma0^2 + sum(delta .* n0l ./ sigmahl^2));
+    m0 = v0 * (mu0/sigma0^2 + sum(delta .* sum_y0 ./ sigmahl));
+    v = (1/v0 + n / sigma^2)^(-1);
+    m = v * (m0 / v0 + sum(y) / sigma^2);
+  }
+
+  theta = normal_rng(m, sqrt(v));
 }
