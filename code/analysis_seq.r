@@ -4,9 +4,9 @@ library(dplyr)
 library(ggplot2)
 library(patchwork)
 
-eta_seq_bin <- cmdstan_model("code/models/eta_seq_bin.stan")
-eta_seq_normal <- cmdstan_model("code/models/eta_seq_normal.stan")
-gamma_seq_bin <- cmdstan_model("code/models/gamma_seq_bin.stan")
+eta_seq_bin <- cmdstan_model("code/models/bin/eta_seq_bin.stan")
+eta_seq_normal <- cmdstan_model("code/models/normal/eta_seq_normal.stan")
+gamma_seq_bin <- cmdstan_model("code/models/bin/gamma_seq_bin.stan")
 
 generate_data_bin <- function(sce) {
   n0 <- sce$n0
@@ -67,8 +67,8 @@ plot_npp_bin <- function(draws, sce) {
   K <- ncol(draws_eta)
 
   plot_eta1 <- ggplot() +
-    geom_density(aes(x = draws_eta_nppseq[, 1], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta[, 1], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 1], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta[, 1], color = "pi"), size = 1) +
     labs(x = expression(eta[1]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -81,8 +81,8 @@ plot_npp_bin <- function(draws, sce) {
     ) +
     guides(color = "none")
   plot_eta2 <- ggplot() +
-    geom_density(aes(x = draws_eta_nppseq[, 2], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta[, 2], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 2], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta[, 2], color = "pi"), size = 1) +
     labs(x = expression(eta[2]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -90,8 +90,8 @@ plot_npp_bin <- function(draws, sce) {
     theme_minimal() +
     guides(color = "none")
   plot_eta3 <- ggplot() +
-    geom_density(aes(x = draws_eta_nppseq[, 3], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta[, 3], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 3], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta[, 3], color = "pi"), size = 1) +
     labs(x = expression(eta[3]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -120,7 +120,7 @@ sce1_npp_bin <- list(n0 = c(100, 100, 100),
               b = 1,
               al = 1/2,
               bl = 1/2,
-              theta0 = c(0.1, 0.1, 0.1),
+              theta0 = c(0.5, 0.5, 0.5),
               alpha = c(1/4, 1/4, 1/4, 1/4)
 )
 sce2_npp_bin <- list(n0 = c(100, 100, 100),
@@ -128,7 +128,7 @@ sce2_npp_bin <- list(n0 = c(100, 100, 100),
               b = 1,
               al = 1,
               bl = 1,
-              theta0 = c(0.1, 0.1, 0.1),
+              theta0 = c(0.5, 0.5, 0.5),
               alpha = c(1, 1, 1, 1)
 )
 
@@ -213,8 +213,8 @@ plot_onpp_bin <- function(draws, sce) {
   K <- ncol(draws_eta_onpp)
 
   plot_eta1 <- ggplot() +
-    geom_density(aes(x = draws_eta_onppseq[, 1], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta_onpp[, 1], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_onppseq[, 1], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_onpp[, 1], color = "pi"), size = 1) +
     labs(x = expression(eta[1]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -227,8 +227,8 @@ plot_onpp_bin <- function(draws, sce) {
     ) +
     guides(color = "none")
   plot_eta2 <- ggplot() +
-    geom_density(aes(x = draws_eta_onppseq[, 2], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta_onpp[, 2], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_onppseq[, 2], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_onpp[, 2], color = "pi"), size = 1) +
     labs(x = expression(eta[2]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -236,8 +236,8 @@ plot_onpp_bin <- function(draws, sce) {
     theme_minimal() +
     guides(color = "none")
   plot_eta3 <- ggplot() +
-    geom_density(aes(x = draws_eta_onppseq[, 3], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta_onpp[, 3], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_onppseq[, 3], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_onpp[, 3], color = "pi"), size = 1) +
     labs(x = expression(eta[3]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -346,8 +346,8 @@ plot_npp_normal <- function(draws, sce) {
   K <- ncol(draws_eta)
 
   plot_eta1 <- ggplot() +
-    geom_density(aes(x = draws_eta_nppseq[, 1], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta[, 1], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 1], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta[, 1], color = "pi"), size = 1) +
     labs(x = expression(eta[1]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -360,8 +360,8 @@ plot_npp_normal <- function(draws, sce) {
     ) +
     guides(color = "none")
   plot_eta2 <- ggplot() +
-    geom_density(aes(x = draws_eta_nppseq[, 2], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta[, 2], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 2], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta[, 2], color = "pi"), size = 1) +
     labs(x = expression(eta[2]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -369,8 +369,8 @@ plot_npp_normal <- function(draws, sce) {
     theme_minimal() +
     guides(color = "none")
   plot_eta3 <- ggplot() +
-    geom_density(aes(x = draws_eta_nppseq[, 3], color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_eta[, 3], color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 3], color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_eta[, 3], color = "pi"), size = 1) +
     labs(x = expression(eta[3]), y = "") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
                         labels = c("SEQ" = "SEQ",
@@ -398,7 +398,7 @@ sce1_npp_normal <- list(n0 = c(100, 100, 100),
               sigma0 = 1,
               al = 1/2,
               bl = 1/2,
-              theta0 = c(-3, -3, 2),
+              theta0 = c(1, 1, 1),
               sigmah = c(1, 1, 1)
 )
 sce2_npp_normal <- list(n0 = c(100, 100, 100),
@@ -406,7 +406,7 @@ sce2_npp_normal <- list(n0 = c(100, 100, 100),
               sigma0 = 1,
               al = 1,
               bl = 1,
-              theta0 = c(-3, -3, 2),
+              theta0 = c(1, 1, 1),
               sigmah = c(1, 1, 1)
 )
 

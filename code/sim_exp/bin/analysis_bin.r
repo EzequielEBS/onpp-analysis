@@ -38,6 +38,11 @@ load("results/samples/bin/sim3_1_bin_all_flat.RData")
 load("results/samples/bin/sim3_2_bin_all_flat.RData")
 load("results/samples/bin/sim3_3_bin_all_flat.RData")
 
+load("results/samples/bin/samples_prior_sce3_1_bin.RData")
+load("results/samples/bin/samples_prior_sce3_1_eta_flat_bin.RData")
+load("results/samples/bin/samples_prior_sce3_1_eta_gamma_flat_bin.RData")
+load("results/samples/bin/samples_prior_sce3_1_all_flat_bin.RData")
+
 # combine simulations
 sim_sces <- list(
   sim1.1, sim1.2, sim1.3,
