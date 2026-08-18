@@ -734,7 +734,26 @@ compute_wis_lm <- function(list_draws, quantile_level, true_value) {
 }
 
 # function to plot BCI
-plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
+plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model, y_range = c(0, 1)) {
+  # FIX: this used to hardcode the reference line at 0.5 and the y-axis
+  # window at [0, 1] regardless of what model/scenario was being plotted --
+  # harmless for the binomial case (theta is a probability, true_val is
+  # already 0.5), but silently wrong for any model whose parameter doesn't
+  # live in [0, 1] (e.g. the normal-model theta ~ 5): every point would be
+  # clipped outside the fixed window and the dashed reference line wouldn't
+  # correspond to the true value at all. The reference line now uses the
+  # `true_val` argument the function already receives instead of a
+  # duplicated literal, and the y-window is a parameter (`y_range`) that
+  # defaults to the original c(0, 1) -- so every existing bin/poi call site
+  # is unaffected -- with y_range = NULL letting ggplot auto-scale for
+  # models where no fixed window makes sense.
+  scale_y_col1 <- if (is.null(y_range)) NULL else scale_y_continuous(limits = y_range)
+  scale_y_col2 <- if (is.null(y_range)) {
+    scale_y_continuous(breaks = NULL)
+  } else {
+    scale_y_continuous(limits = y_range, breaks = NULL)
+  }
+
   bci_npp <- data.frame(sample = 1:length(bci$bci_npp),
                         hattheta = sim$hattheta$hattheta_npp,
                         lower = unlist(lapply(bci$bci_npp, 
@@ -834,7 +853,7 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
                                   ymin = lower, ymax = upper, colour = include),
                     na.rm = TRUE,
                     fatten = 0.5) +
-    geom_hline(yintercept = 0.5, linetype = "longdash") +
+    geom_hline(yintercept = true_val, linetype = "longdash") +
     ggtitle(paste(
       "NPP ", "(",
       formatC(coverage$coverage_npp, 
@@ -845,17 +864,17 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     )) + 
     theme_gray() +
     scale_color_manual(values = c("TRUE" = "#00BFC4", "FALSE" = "tomato"), drop = FALSE) +
-    ylim(0, 1) +
+    scale_y_col1 +
     xlab("") +
     ylab("")
-  
+
   plot_nppseq <- ggplot() +
     geom_pointrange(data = bci_nppseq,
                     mapping = aes(x = sample, y = hattheta,
                                   ymin = lower, ymax = upper, colour = include),
                     na.rm = TRUE,
                     fatten = 0.5) +
-    geom_hline(yintercept = 0.5, linetype = "longdash") +
+    geom_hline(yintercept = true_val, linetype = "longdash") +
     ggtitle(paste(
       "NPP-SEQ ", "(",
       formatC(coverage$coverage_nppseq, 
@@ -866,18 +885,17 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     )) +
     theme_gray() +
     scale_color_manual(values = c("TRUE" = "#00BFC4", "FALSE" = "tomato"), drop = FALSE) +
-    ylim(0, 1) +
+    scale_y_col2 +
     xlab("") +
-    ylab("") +
-    scale_y_continuous(limits = c(0, 1), breaks = NULL) 
-  
+    ylab("")
+
   plot_onpp <- ggplot() +
     geom_pointrange(data = bci_onpp,
                     mapping = aes(x = sample, y = hattheta,
                                   ymin = lower, ymax = upper, colour = include),
                     na.rm = TRUE,
                     fatten = 0.5) +
-    geom_hline(yintercept = 0.5, linetype = "longdash") +
+    geom_hline(yintercept = true_val, linetype = "longdash") +
     ggtitle(paste(
       "ONPP ", "(",
       formatC(coverage$coverage_onpp, 
@@ -888,18 +906,17 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     )) +
     theme_gray() +
     scale_color_manual(values = c("TRUE" = "#00BFC4", "FALSE" = "tomato"), drop = FALSE) +
-    ylim(0, 1) +
+    scale_y_col2 +
     xlab("") +
-    ylab("") +
-    scale_y_continuous(limits = c(0, 1), breaks = NULL) 
-  
+    ylab("")
+
   plot_onppseq <- ggplot() +
     geom_pointrange(data = bci_onppseq,
                     mapping = aes(x = sample, y = hattheta,
                                   ymin = lower, ymax = upper, colour = include),
                     na.rm = TRUE,
                     fatten = 0.5) +
-    geom_hline(yintercept = 0.5, linetype = "longdash") +
+    geom_hline(yintercept = true_val, linetype = "longdash") +
     ggtitle(paste(
       "ONPP-SEQ ", "(",
       formatC(coverage$coverage_onppseq, 
@@ -910,11 +927,10 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
     )) +
     theme_gray() +
     scale_color_manual(values = c("TRUE" = "#00BFC4", "FALSE" = "tomato"), drop = FALSE) +
-    ylim(0, 1) +
+    scale_y_col2 +
     xlab("") +
-    ylab("") +
-    scale_y_continuous(limits = c(0, 1), breaks = NULL) 
-  
+    ylab("")
+
   # combine plots
   title <- paste(prob*100, "%",
                  " BCI for scenario ", 
