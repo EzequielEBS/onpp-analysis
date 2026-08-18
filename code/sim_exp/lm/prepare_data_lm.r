@@ -117,8 +117,8 @@ build_lm_order_scenarios <- function(csv_type, n0_rel, num_sim, par = lm_default
   }
 
   order_I   <- lapply(congruence, read_one)
-  order_II  <- lapply(order_I, swap_data_id_labels, label_a = "hist_2", label_b = "hist_3")
-  order_III <- lapply(order_I, swap_data_id_labels, label_a = "hist_1", label_b = "hist_3")
+  order_II  <- lapply(order_I, swap_data_id_labels, label_a = "hist2", label_b = "hist3")
+  order_III <- lapply(order_I, swap_data_id_labels, label_a = "hist1", label_b = "hist3")
   order_IV  <- lapply(congruence, read_one, neutral = TRUE)
 
   orders <- list(I = order_I, II = order_II, III = order_III, IV = order_IV)
