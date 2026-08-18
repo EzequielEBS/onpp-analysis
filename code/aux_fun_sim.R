@@ -1,5 +1,129 @@
-# function to simulate data and run the models
-sample_sce_bin <- function(par_list, gamma_model, delta_model, post = 1){
+# =============================================================================
+# Internal helpers shared by sample_sce_bin / sample_sce_poi /
+# sample_sce_normal_fixed_var / sample_sce_lm.
+#
+# The four sample_sce_* functions below used to be ~90% duplicated: each
+# built four near-identical Stan data lists (onpp/onppseq/npp/nppseq), ran
+# four $sample() calls, pulled divergence counts through a slow
+# as_draws_df() round trip, and assembled the same 18-field return list by
+# hand. That duplication is also how the normal-model sd/variance bug and
+# the Poisson-model "post" bug (both fixed below) went unnoticed for a
+# while: four independent copies of the same logic can quietly drift apart.
+#
+# These helpers factor the shared plumbing out; each sample_sce_* function
+# now only supplies what's actually family-specific: the Stan data fields
+# and the posterior draw transform for theta.
+#
+# NOTE for maintainers: sim_sce() runs these on a PSOCK cluster and
+# explicitly clusterExport()s the helper names below (see sim_sce()). If you
+# add another shared helper here, add its name to that clusterExport() call
+# too, or workers will fail with "could not find function ...".
+# =============================================================================
+
+# Build the four (onpp / onppseq / npp / nppseq) Stan data lists from a
+# common base list plus the fields that differ between the "ordered" (alpha,
+# Dirichlet-prior) and "non-ordered" (al/bl, Beta-prior) variants.
+.build_variant_data <- function(base, alpha, al, bl) {
+  list(
+    onpp    = c(base, list(alpha = alpha, seq = 0)),
+    onppseq = c(base, list(alpha = alpha, seq = 1)),
+    npp     = c(base, list(al = al, bl = bl, seq = 0)),
+    nppseq  = c(base, list(al = al, bl = bl, seq = 1))
+  )
+}
+
+# Fit gamma_model (onpp/onppseq) and delta_model (npp/nppseq) on the four
+# data variants and return the four cmdstanr fit objects.
+#
+# sampler_args can set chains / iter_warmup / iter_sampling / refresh, plus
+# adapt_delta either as a single value (applied to all four fits) or as a
+# named list c(onpp = , onppseq = , npp = , nppseq = ) for per-fit control
+# (the normal-fixed-variance model needs a stricter adapt_delta for its
+# onpp fit than the other three; see sample_sce_normal_fixed_var()). If
+# adapt_delta is omitted entirely, cmdstanr's own default is used.
+#
+# Each $sample() call is wrapped in tryCatch() so a failure identifies which
+# of the four fits broke, instead of an opaque error several call frames
+# away. sim_sce() additionally makes a whole *replicate* skippable if one
+# of its four fits fails, so a single bad replicate doesn't abort an entire
+# batch of hundreds of simulations.
+.fit_family <- function(gamma_model, delta_model,
+                         data_onpp, data_onppseq, data_npp, data_nppseq,
+                         sampler_args = list()) {
+  defaults <- list(chains = 4, iter_warmup = 2000, iter_sampling = 2000, refresh = 0)
+  adapt_delta <- sampler_args$adapt_delta
+  base_args <- utils::modifyList(defaults, sampler_args[setdiff(names(sampler_args), "adapt_delta")])
+
+  adapt_delta_for <- function(variant) {
+    if (is.null(adapt_delta)) return(NULL)
+    if (is.list(adapt_delta)) return(adapt_delta[[variant]])
+    unname(adapt_delta)
+  }
+
+  run <- function(model, data, variant) {
+    call_args <- c(list(data = data), base_args)
+    ad <- adapt_delta_for(variant)
+    if (!is.null(ad)) call_args$adapt_delta <- ad
+    tryCatch(
+      do.call(model$sample, call_args),
+      error = function(e) {
+        stop(sprintf("cmdstanr sampling failed for the '%s' fit: %s",
+                      variant, conditionMessage(e)), call. = FALSE)
+      }
+    )
+  }
+
+  list(
+    onpp    = run(gamma_model, data_onpp,    "onpp"),
+    onppseq = run(gamma_model, data_onppseq, "onppseq"),
+    npp     = run(delta_model, data_npp,     "npp"),
+    nppseq  = run(delta_model, data_nppseq,  "nppseq")
+  )
+}
+
+# Extract a named variable's draws (as a draws_matrix) for all four fits.
+.extract_draws <- function(fits, variable) {
+  lapply(fits, function(fit) fit$draws(variables = variable) %>% as_draws_matrix())
+}
+
+# Count divergent transitions directly from the sampler diagnostics array.
+# (The original code round-tripped this through as_draws_df() just to sum
+# one column -- summing the array slice directly is equivalent and faster.)
+.count_divergences <- function(fit) {
+  sum(fit$sampler_diagnostics()[, , "divergent__"])
+}
+
+# Assemble the standard sample_sce_* return value (hattheta/hatdelta means,
+# divergence counts, and the raw draws) from the four fits plus the four
+# eta/delta draws and four theta draws. theta_draws elements may be plain
+# vectors (bin/poi/normal) or matrices (lm, one column per beta + sigma) --
+# colMeans()/mean() is picked automatically per element.
+.assemble_sce_result <- function(fits, eta_draws, theta_draws) {
+  hattheta <- lapply(theta_draws, function(x) if (is.matrix(x)) colMeans(x) else mean(x))
+  hatdelta <- lapply(eta_draws, colMeans)
+  divergences <- lapply(fits, .count_divergences)
+
+  list(
+    hattheta_npp = hattheta$npp, hattheta_nppseq = hattheta$nppseq,
+    hattheta_onpp = hattheta$onpp, hattheta_onppseq = hattheta$onppseq,
+    hatdelta_npp = hatdelta$npp, hatdelta_nppseq = hatdelta$nppseq,
+    hatdelta_onpp = hatdelta$onpp, hatdelta_onppseq = hatdelta$onppseq,
+    divergences = list(divergences_npp = divergences$npp,
+                       divergences_nppseq = divergences$nppseq,
+                       divergences_onpp = divergences$onpp,
+                       divergences_onppseq = divergences$onppseq),
+    delta_npp = eta_draws$npp, delta_nppseq = eta_draws$nppseq,
+    delta_onpp = eta_draws$onpp, delta_onppseq = eta_draws$onppseq,
+    theta_npp = theta_draws$npp, theta_nppseq = theta_draws$nppseq,
+    theta_onpp = theta_draws$onpp, theta_onppseq = theta_draws$onppseq
+  )
+}
+
+# =============================================================================
+# function to simulate binomial data and run the four models (NPP / NPP-SEQ
+# / ONPP / ONPP-SEQ)
+# =============================================================================
+sample_sce_bin <- function(par_list, gamma_model, delta_model, sampler_args = list()) {
   # get parameters
   n0 <- par_list$n0
   n <- par_list$n
@@ -13,160 +137,47 @@ sample_sce_bin <- function(par_list, gamma_model, delta_model, post = 1){
   K <- length(n0)
   z0 <- par_list$z0
   z <- par_list$z
-  if (is.null(z0)){
+  if (is.null(z0)) {
     z0 <- unlist(lapply(1:K, function(i) rbinom(1, n0[i], theta0[i])))
   }
-  if (is.null(z)){
+  if (is.null(z)) {
     z <- rbinom(1, n, theta)
   }
-  # define data list
-  data_onpp <- list(a = a, 
-                    b = b, 
-                    K = K, 
-                    n = n, 
-                    z = z, 
-                    n0 = n0, 
-                    z0 = z0, 
-                    alpha = alpha,
-                    post = post,
-                    seq = 0
-  )
-  data_onppseq <- list(a = a, 
-                       b = b, 
-                       K = K, 
-                       n = n, 
-                       z = z, 
-                       n0 = n0, 
-                       z0 = z0, 
-                       alpha = alpha,
-                       post = post,
-                       seq = 1
-  )
-  data_npp <- list(a = a, 
-                   b = b, 
-                   K = K, 
-                   n = n, 
-                   z = z, 
-                   n0 = n0, 
-                   z0 = z0, 
-                   al = al,
-                   bl = bl,
-                   post = post,
-                   seq = 0
-  )
-  data_nppseq <- list(a = a, 
-                      b = b, 
-                      K = K, 
-                      n = n, 
-                      z = z, 
-                      n0 = n0, 
-                      z0 = z0, 
-                      al = al,
-                      bl = bl,
-                      post = post,
-                      seq = 1
-  )
+  post <- if (is.null(par_list$post)) 1 else par_list$post
+
+  # define data lists
+  base <- list(a = a, b = b, K = K, n = n, s = z, n0 = n0, s0 = z0, post = post)
+  data <- .build_variant_data(base, alpha, al, bl)
+
   # sample from the models
-  sample_delta_onpp <- gamma_model$sample(data = data_onpp, 
-                                              chains = 4, 
-                                              # parallel_chains = 4, 
-                                              iter_warmup = 2000, 
-                                              iter_sampling = 2000,
-                                              adapt_delta = 0.98,
-                                              refresh = 0
+  fits <- .fit_family(gamma_model, delta_model,
+                       data$onpp, data$onppseq, data$npp, data$nppseq,
+                       utils::modifyList(list(adapt_delta = 0.98), sampler_args))
+
+  eta_draws <- .extract_draws(fits, "eta")
+
+  theta_draws <- list(
+    npp     = rbeta(nrow(eta_draws$npp),
+                     z + a + eta_draws$npp %*% z0,
+                     n - z + b + eta_draws$npp %*% (n0 - z0)),
+    nppseq  = rbeta(nrow(eta_draws$nppseq),
+                     z + K * (a - 1) + 1 + eta_draws$nppseq %*% z0,
+                     n - z + K * (b - 1) + 1 + eta_draws$nppseq %*% (n0 - z0)),
+    onpp    = rbeta(nrow(eta_draws$onpp),
+                     z + a + eta_draws$onpp %*% z0,
+                     n - z + b + eta_draws$onpp %*% (n0 - z0)),
+    onppseq = rbeta(nrow(eta_draws$onppseq),
+                     z + K * (a - 1) + 1 + eta_draws$onppseq %*% z0,
+                     n - z + K * (b - 1) + 1 + eta_draws$onppseq %*% (n0 - z0))
   )
-  sample_delta_onppseq <- gamma_model$sample(data = data_onppseq, 
-                                                 chains = 4, 
-                                                 # parallel_chains = 4, 
-                                                 iter_warmup = 2000, 
-                                                 iter_sampling = 2000,
-                                                 adapt_delta = 0.98,
-                                                 refresh = 0
-  )
-  sample_delta_npp <- delta_model$sample(data = data_npp, 
-                                             chains = 4, 
-                                             # parallel_chains = 4, 
-                                             iter_warmup = 2000, 
-                                             iter_sampling = 2000,
-                                             adapt_delta = 0.98,
-                                             refresh = 0
-  )
-  sample_delta_nppseq <- delta_model$sample(data = data_nppseq, 
-                                                chains = 4, 
-                                                # parallel_chains = 4, 
-                                                iter_warmup = 2000, 
-                                                iter_sampling = 2000,
-                                                adapt_delta = 0.98,
-                                                refresh = 0
-  )
-  # # save output files
-  # save_dir <- "results/cmdstan_outputs"
-  # if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-  # sample_delta_npp$save_output_files(dir = save_dir)
-  # sample_delta_nppseq$save_output_files(dir = save_dir)
-  # sample_delta_onpp$save_output_files(dir = save_dir)
-  # sample_delta_onppseq$save_output_files(dir = save_dir)
-  
-  # get diagnostics
-  diagnostics_onpp <- sample_delta_onpp$sampler_diagnostics()
-  diagnostics_onppseq <- sample_delta_onppseq$sampler_diagnostics()
-  diagnostics_npp <- sample_delta_npp$sampler_diagnostics()
-  diagnostics_nppseq <- sample_delta_nppseq$sampler_diagnostics()
-  
-  # get divergences
-  divergences_onpp <- sum((diagnostics_onpp[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_onppseq <- sum((diagnostics_onppseq[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_npp <- sum((diagnostics_npp[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_nppseq <- sum((diagnostics_nppseq[, , "divergent__"] %>% as_draws_df())$divergent__)
-  
-  # get draws
-  draws_delta_onpp <- sample_delta_onpp$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_onppseq <- sample_delta_onppseq$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_npp <- sample_delta_npp$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_nppseq <- sample_delta_nppseq$draws(variables = "delta") %>% as_draws_matrix()
-  
-  theta_npp <- rbeta(nrow(draws_delta_npp),
-                     z + a + draws_delta_npp %*% z0, 
-                     n - z + b + draws_delta_npp %*% (n0 - z0)
-  )
-  theta_nppseq <- rbeta(nrow(draws_delta_nppseq),
-                        z + K*(a-1) + 1 + draws_delta_nppseq %*% z0, 
-                        n - z + K*(b-1) + 1 + draws_delta_nppseq %*% (n0 - z0)
-  )
-  theta_onpp <- rbeta(nrow(draws_delta_onpp),
-                      z + a + draws_delta_onpp %*% z0, 
-                      n - z + b + draws_delta_onpp %*% (n0 - z0)
-  )
-  theta_onppseq <- rbeta(nrow(draws_delta_onppseq),
-                         z + K*(a-1) + 1 + draws_delta_onppseq %*% z0, 
-                         n - z + K*(b-1) + 1 + draws_delta_onppseq %*% (n0 - z0)
-  )
-  
-  return(list(hattheta_npp = mean(theta_npp),
-              hattheta_nppseq = mean(theta_nppseq),
-              hattheta_onpp = mean(theta_onpp),
-              hattheta_onppseq = mean(theta_onppseq),
-              hatdelta_npp = colMeans(draws_delta_npp),
-              hatdelta_nppseq = colMeans(draws_delta_nppseq),
-              hatdelta_onpp = colMeans(draws_delta_onpp),
-              hatdelta_onppseq = colMeans(draws_delta_onppseq),
-              divergences = list(divergences_npp = divergences_npp,
-                                 divergences_nppseq = divergences_nppseq,
-                                 divergences_onpp = divergences_onpp,
-                                 divergences_onppseq = divergences_onppseq),
-              delta_npp = draws_delta_npp,
-              delta_nppseq = draws_delta_nppseq,
-              delta_onpp = draws_delta_onpp,
-              delta_onppseq = draws_delta_onppseq,
-              theta_npp = theta_npp,
-              theta_nppseq = theta_nppseq,
-              theta_onpp = theta_onpp,
-              theta_onppseq = theta_onppseq
-  ))
+
+  .assemble_sce_result(fits, eta_draws, theta_draws)
 }
 
-# function to simulate data and run the models
-sample_sce_poi <- function(par_list, gamma_model, delta_model){
+# =============================================================================
+# function to simulate Poisson data and run the four models
+# =============================================================================
+sample_sce_poi <- function(par_list, gamma_model, delta_model, sampler_args = list()) {
   # get parameters
   t0 <- par_list$t0
   t <- par_list$t
@@ -180,333 +191,128 @@ sample_sce_poi <- function(par_list, gamma_model, delta_model){
   K <- length(t0)
   z0 <- par_list$z0
   z <- par_list$z
-  if (is.null(z0)){
-    z0 <- unlist(lapply(1:K, function(i) rpois(1, t0[i]*theta0[i])))
+  if (is.null(z0)) {
+    z0 <- unlist(lapply(1:K, function(i) rpois(1, t0[i] * theta0[i])))
   }
-  if (is.null(z)){
-    z <- rpois(1, t*theta)
+  if (is.null(z)) {
+    z <- rpois(1, t * theta)
   }
-  # define data list
-  data_onpp <- list(a = a, 
-                    b = b, 
-                    K = K, 
-                    t = t, 
-                    z = z, 
-                    t0 = t0, 
-                    z0 = z0, 
-                    alpha = alpha,
-                    post = 1,
-                    seq = 0
-  )
-  data_onppseq <- list(a = a, 
-                       b = b, 
-                       K = K, 
-                       t = t, 
-                       z = z, 
-                       t0 = t0, 
-                       z0 = z0, 
-                       alpha = alpha,
-                       post = 1,
-                       seq = 1
-  )
-  data_npp <- list(a = a, 
-                   b = b, 
-                   K = K, 
-                   t = t, 
-                   z = z, 
-                   t0 = t0, 
-                   z0 = z0, 
-                   al = al,
-                   bl = bl,
-                   post = 1,
-                   seq = 0
-  )
-  data_nppseq <- list(a = a, 
-                      b = b, 
-                      K = K, 
-                      t = t, 
-                      z = z, 
-                      t0 = t0, 
-                      z0 = z0, 
-                      al = al,
-                      bl = bl,
-                      post = 1,
-                      seq = 1
-  )
+  # FIX: this used to hardcode post = 1 in every data list regardless of
+  # par_list$post, unlike the bin/normal/lm versions -- a prior-only
+  # (post = 0) call for the Poisson model was silently ignored and always
+  # sampled from the posterior instead.
+  post <- if (is.null(par_list$post)) 1 else par_list$post
+
+  # define data lists
+  base <- list(a = a, b = b, K = K, t = t, z = z, t0 = t0, z0 = z0, post = post)
+  data <- .build_variant_data(base, alpha, al, bl)
+
   # sample from the models
-  sample_delta_onpp <- gamma_model$sample(data = data_onpp, 
-                                          chains = 4, 
-                                          iter_warmup = 2000, 
-                                          iter_sampling = 2000,
-                                          adapt_delta = 0.98,
-                                          refresh = 0
+  fits <- .fit_family(gamma_model, delta_model,
+                       data$onpp, data$onppseq, data$npp, data$nppseq,
+                       utils::modifyList(list(adapt_delta = 0.98), sampler_args))
+
+  eta_draws <- .extract_draws(fits, "delta")
+
+  theta_draws <- list(
+    npp     = rgamma(nrow(eta_draws$npp),
+                      z + a + eta_draws$npp %*% z0,
+                      b + eta_draws$npp %*% t0 + t),
+    nppseq  = rgamma(nrow(eta_draws$nppseq),
+                      z + K * (a - 1) + 1 + eta_draws$nppseq %*% z0,
+                      K * b + eta_draws$nppseq %*% t0 + t),
+    onpp    = rgamma(nrow(eta_draws$onpp),
+                      z + a + eta_draws$onpp %*% z0,
+                      b + eta_draws$onpp %*% t0 + t),
+    onppseq = rgamma(nrow(eta_draws$onppseq),
+                      z + K * (a - 1) + 1 + eta_draws$onppseq %*% z0,
+                      K * b + eta_draws$onppseq %*% t0 + t)
   )
-  sample_delta_onppseq <- gamma_model$sample(data = data_onppseq, 
-                                             chains = 4, 
-                                             iter_warmup = 2000, 
-                                             iter_sampling = 2000,
-                                             adapt_delta = 0.98,
-                                             refresh = 0
-  )
-  sample_delta_npp <- delta_model$sample(data = data_npp, 
-                                         chains = 4, 
-                                         iter_warmup = 2000, 
-                                         iter_sampling = 2000,
-                                         adapt_delta = 0.98,
-                                         refresh = 0
-  )
-  sample_delta_nppseq <- delta_model$sample(data = data_nppseq, 
-                                            chains = 4,  
-                                            iter_warmup = 2000, 
-                                            iter_sampling = 2000,
-                                            adapt_delta = 0.98,
-                                            refresh = 0
-  )
-  # # save output files
-  # save_dir <- "results/cmdstan_outputs"
-  # if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-  # sample_delta_npp$save_output_files(dir = save_dir)
-  # sample_delta_nppseq$save_output_files(dir = save_dir)
-  # sample_delta_onpp$save_output_files(dir = save_dir)
-  # sample_delta_onppseq$save_output_files(dir = save_dir)
-  
-  # get diagnostics
-  diagnostics_onpp <- sample_delta_onpp$sampler_diagnostics()
-  diagnostics_onppseq <- sample_delta_onppseq$sampler_diagnostics()
-  diagnostics_npp <- sample_delta_npp$sampler_diagnostics()
-  diagnostics_nppseq <- sample_delta_nppseq$sampler_diagnostics()
-  
-  # get divergences
-  divergences_onpp <- sum((diagnostics_onpp[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_onppseq <- sum((diagnostics_onppseq[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_npp <- sum((diagnostics_npp[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_nppseq <- sum((diagnostics_nppseq[, , "divergent__"] %>% as_draws_df())$divergent__)
-  
-  # get draws
-  draws_delta_onpp <- sample_delta_onpp$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_onppseq <- sample_delta_onppseq$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_npp <- sample_delta_npp$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_nppseq <- sample_delta_nppseq$draws(variables = "delta") %>% as_draws_matrix()
-  
-  theta_npp <- rgamma(nrow(draws_delta_npp),
-                      z + a + draws_delta_npp %*% z0, 
-                      b + draws_delta_npp %*% t0 + t
-  )
-  theta_nppseq <- rgamma(nrow(draws_delta_nppseq),
-                         z + K*(a-1) + 1 + draws_delta_nppseq %*% z0, 
-                         K*b + draws_delta_nppseq %*% t0 + t
-  )
-  theta_onpp <- rgamma(nrow(draws_delta_onpp),
-                       z + a + draws_delta_onpp %*% z0, 
-                       b + draws_delta_onpp %*% t0 + t
-  )
-  theta_onppseq <- rgamma(nrow(draws_delta_onppseq),
-                          z + K*(a-1) + 1 + draws_delta_onppseq %*% z0, 
-                          K*b + draws_delta_onppseq %*% t0 + t
-  )
-  
-  return(list(hattheta_npp = mean(theta_npp),
-              hattheta_nppseq = mean(theta_nppseq),
-              hattheta_onpp = mean(theta_onpp),
-              hattheta_onppseq = mean(theta_onppseq),
-              hatdelta_npp = colMeans(draws_delta_npp),
-              hatdelta_nppseq = colMeans(draws_delta_nppseq),
-              hatdelta_onpp = colMeans(draws_delta_onpp),
-              hatdelta_onppseq = colMeans(draws_delta_onppseq),
-              divergences = list(divergences_npp = divergences_npp,
-                                 divergences_nppseq = divergences_nppseq,
-                                 divergences_onpp = divergences_onpp,
-                                 divergences_onppseq = divergences_onppseq),
-              delta_npp = draws_delta_npp,
-              delta_nppseq = draws_delta_nppseq,
-              delta_onpp = draws_delta_onpp,
-              delta_onppseq = draws_delta_onppseq,
-              theta_npp = theta_npp,
-              theta_nppseq = theta_nppseq,
-              theta_onpp = theta_onpp,
-              theta_onppseq = theta_onppseq
-  ))
+
+  .assemble_sce_result(fits, eta_draws, theta_draws)
 }
 
-sample_sce_normal_fixed_var <- function(par_list, gamma_model, delta_model, post = 1){
+# =============================================================================
+# function to simulate normal (fixed-variance) data and run the four models
+# =============================================================================
+sample_sce_normal_fixed_var <- function(par_list, gamma_model, delta_model, sampler_args = list()) {
   # get parameters
   n0 <- par_list$n0
   n <- par_list$n
   mu0 <- par_list$mu0
-  sigma0 <- par_list$sigma0
+  tau02 <- par_list$tau02
   al <- par_list$al
   bl <- par_list$bl
   alpha <- par_list$alpha
   theta0 <- par_list$theta0
   theta <- par_list$theta
-  sigmah <- par_list$sigmah
-  sigma <- par_list$sigma
-  
+  sigma2 <- par_list$sigma2
+  post <- if (is.null(par_list$post)) 1 else par_list$post
+
   K <- length(n0)
   y0 <- par_list$y0
   y <- par_list$y
-  if (is.null(y0)){
-    y0 <- do.call(c, lapply(1:K, function(i) 
-                                  rnorm(n0[i], mean = theta0[i], sd = sigmah[i])))
-    start_idx <- c(1, cumsum(n0) + 1)[1:K]
+  # FIX: sigma2 is a *variance* (it's also passed to the Stan model as
+  # sigma2), but this used to be plugged straight into rnorm(sd = sigma2)
+  # without sqrt(). That's invisible whenever sigma2 = 1 (every scenario
+  # file currently used sigma2 = 1), but it would silently simulate data
+  # with the wrong spread for any other variance.
+  if (is.null(y0)) {
+    y0 <- lapply(1:K, function(i)
+      rnorm(n0[i], mean = theta0[i], sd = sqrt(sigma2)))
   }
-  if (is.null(y)){
-    y <- rnorm(n, mean = theta, sd = sigma)
+  if (is.null(y)) {
+    y <- rnorm(n, mean = theta, sd = sqrt(sigma2))
   }
-  # define data list
-  data_onpp <- list(
+
+  # define data lists
+  base <- list(
     K = K,
     n0 = n0,
     n = n,
     mu0 = mu0,
-    sigma0 = sigma0,
-    sigmah = sigmah,
-    sigma = sigma,
-    y0 = y0,
-    y = y,
-    start_idx = start_idx,
-    alpha = alpha,
-    post = post,
-    seq = 0
+    tau02 = tau02,
+    sigma2 = sigma2,
+    ybar0 = unlist(lapply(1:K, function(i) mean(y0[[i]]))),
+    ybar = mean(y),
+    post = post
   )
-  data_onppseq <- list(
-    K = K,
-    n0 = n0,
-    n = n,
-    mu0 = mu0,
-    sigma0 = sigma0,
-    sigmah = sigmah,
-    sigma = sigma,
-    y0 = y0,
-    y = y,
-    start_idx = start_idx,
-    alpha = alpha,
-    post = post,
-    seq = 1
-  )
-  data_npp <- list(
-    K = K,
-    n0 = n0,
-    n = n,
-    mu0 = mu0,
-    sigma0 = sigma0,
-    sigmah = sigmah,
-    sigma = sigma,
-    y0 = y0,
-    y = y,
-    start_idx = start_idx,
-    al = al,
-    bl = bl,
-    post = post,
-    seq = 0
-  )
-  data_nppseq <- list(
-    K = K,
-    n0 = n0,
-    n = n,
-    mu0 = mu0,
-    sigma0 = sigma0,
-    sigmah = sigmah,
-    sigma = sigma,
-    y0 = y0,
-    y = y,
-    start_idx = start_idx,
-    al = al,
-    bl = bl,
-    post = post,
-    seq = 1
-  )
+  data <- .build_variant_data(base, alpha, al, bl)
+
   # sample from the models
-  sample_delta_onpp <- gamma_model$sample(data = data_onpp, 
-                                              chains = 4, 
-                                              # parallel_chains = 4, 
-                                              iter_warmup = 2000, 
-                                              iter_sampling = 2000,
-                                              adapt_delta = 0.9999999,
-                                              refresh = 0
-  )
-  sample_delta_onppseq <- gamma_model$sample(data = data_onppseq, 
-                                                 chains = 4, 
-                                                 # parallel_chains = 4, 
-                                                 iter_warmup = 2000, 
-                                                 iter_sampling = 2000,
-                                                 adapt_delta = 0.999999,
-                                                 refresh = 0
-  )
-  sample_delta_npp <- delta_model$sample(data = data_npp, 
-                                             chains = 4, 
-                                             # parallel_chains = 4, 
-                                             iter_warmup = 2000, 
-                                             iter_sampling = 2000,
-                                             adapt_delta = 0.999999,
-                                             refresh = 0
-  )
-  sample_delta_nppseq <- delta_model$sample(data = data_nppseq, 
-                                                chains = 4, 
-                                                # parallel_chains = 4, 
-                                                iter_warmup = 2000, 
-                                                iter_sampling = 2000,
-                                                adapt_delta = 0.999999,
-                                                refresh = 0
-  )
-  # # save output files
-  # save_dir <- "results/cmdstan_outputs"
-  # if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-  # sample_delta_npp$save_output_files(dir = save_dir)
-  # sample_delta_nppseq$save_output_files(dir = save_dir)
-  # sample_delta_onpp$save_output_files(dir = save_dir)
-  # sample_delta_onppseq$save_output_files(dir = save_dir)
-  
-  # get diagnostics
-  diagnostics_onpp <- sample_delta_onpp$sampler_diagnostics()
-  diagnostics_onppseq <- sample_delta_onppseq$sampler_diagnostics()
-  diagnostics_npp <- sample_delta_npp$sampler_diagnostics()
-  diagnostics_nppseq <- sample_delta_nppseq$sampler_diagnostics()
-  
-  # get divergences
-  divergences_onpp <- sum((diagnostics_onpp[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_onppseq <- sum((diagnostics_onppseq[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_npp <- sum((diagnostics_npp[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_nppseq <- sum((diagnostics_nppseq[, , "divergent__"] %>% as_draws_df())$divergent__)
-  
-  # get draws
-  draws_delta_onpp <- sample_delta_onpp$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_onppseq <- sample_delta_onppseq$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_npp <- sample_delta_npp$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_nppseq <- sample_delta_nppseq$draws(variables = "delta") %>% as_draws_matrix()
-  
-  theta_npp <- sample_delta_npp$draws(variables = "theta") %>% as_draws_df() %>% pull(theta)
-  theta_nppseq <- sample_delta_nppseq$draws(variables = "theta") %>% as_draws_df() %>% pull(theta)
-  theta_onpp <- sample_delta_onpp$draws(variables = "theta") %>% as_draws_df() %>% pull(theta)
-  theta_onppseq <- sample_delta_onppseq$draws(variables = "theta") %>% as_draws_df() %>% pull(theta)
-  
-  return(list(hattheta_npp = mean(theta_npp),
-              hattheta_nppseq = mean(theta_nppseq),
-              hattheta_onpp = mean(theta_onpp),
-              hattheta_onppseq = mean(theta_onppseq),
-              hatdelta_npp = colMeans(draws_delta_npp),
-              hatdelta_nppseq = colMeans(draws_delta_nppseq),
-              hatdelta_onpp = colMeans(draws_delta_onpp),
-              hatdelta_onppseq = colMeans(draws_delta_onppseq),
-              divergences = list(divergences_npp = divergences_npp,
-                                 divergences_nppseq = divergences_nppseq,
-                                 divergences_onpp = divergences_onpp,
-                                 divergences_onppseq = divergences_onppseq),
-              delta_npp = draws_delta_npp,
-              delta_nppseq = draws_delta_nppseq,
-              delta_onpp = draws_delta_onpp,
-              delta_onppseq = draws_delta_onppseq,
-              theta_npp = theta_npp,
-              theta_nppseq = theta_nppseq,
-              theta_onpp = theta_onpp,
-              theta_onppseq = theta_onppseq
-  ))
+  #
+  # NOTE: the onpp fit uses a stricter adapt_delta (7 nines) than the other
+  # three (6 nines) here -- that asymmetry was already present in the
+  # original code. It's kept as-is rather than silently unified, since
+  # doing so would be a real (if small) change to sampler behaviour; if the
+  # difference wasn't intentional, tighten/loosen it explicitly here.
+  fits <- .fit_family(gamma_model, delta_model,
+                       data$onpp, data$onppseq, data$npp, data$nppseq,
+                       utils::modifyList(
+                         list(adapt_delta = list(onpp = 0.9999999,
+                                                  onppseq = 0.999999,
+                                                  npp = 0.999999,
+                                                  nppseq = 0.999999)),
+                         sampler_args
+                       ))
+
+  eta_draws <- .extract_draws(fits, "eta")
+  theta_draws <- lapply(fits, function(fit) {
+    fit$draws(variables = "theta") %>% as_draws_df() %>% pull(theta)
+  })
+
+  .assemble_sce_result(fits, eta_draws, theta_draws)
 }
 
-sample_sce_lm <- function(par_list, data, gamma_model, delta_model){
+# =============================================================================
+# function to run the four models for the linear-regression case (data is
+# prepared ahead of time by prepare_data_stan(), unlike the other three
+# families which simulate their own data)
+# =============================================================================
+sample_sce_lm <- function(par_list, data, gamma_model, delta_model, sampler_args = list()) {
   X0 <- data$X0_flat
   startid_X0 <- data$startid_X0
-  n0 <- as.vector(data$dims_y0[,1]) 
+  n0 <- as.vector(data$dims_y0[, 1])
   y0 <- data$y0_flat
   startid_y0 <- data$startid_y0
   K <- length(startid_X0)
@@ -521,250 +327,157 @@ sample_sce_lm <- function(par_list, data, gamma_model, delta_model){
   V0 <- par_list$V0
   a <- par_list$a
   b <- par_list$b
-  tilde_a <- par_list$tilde_a
-  tilde_b <- par_list$tilde_b
+  al <- par_list$al
+  bl <- par_list$bl
   alpha <- par_list$alpha
+  post <- if (is.null(par_list$post)) 1 else par_list$post
 
-  if (is.null(par_list$post)) {
-    post <- 1
-  } else {
-    post <- par_list$post
-  }
+  # define data lists
+  base <- list(
+    K = K, n0 = n0, n = n, p = p,
+    len_X0 = len_X0, len_y0 = len_y0,
+    X0 = X0, startid_X0 = startid_X0,
+    y0 = y0, startid_y0 = startid_y0,
+    X = X, y = y,
+    a = a, b = b, V0 = V0, mu0 = mu0,
+    post = post
+  )
+  data_variants <- .build_variant_data(base, alpha, al, bl)
 
-  # define data list
-  data_onpp <- list(
-    K = K,
-    n0 = n0,
-    n = n,
-    p = p,
-    len_X0 = len_X0,
-    len_y0 = len_y0,
-    X0 = X0,
-    startid_X0 = startid_X0,
-    y0 = y0,
-    startid_y0 = startid_y0,
-    X = X,
-    y = y,
-    a = a,
-    b = b,
-    V0 = V0,
-    mu0 = mu0,
-    alpha = alpha,
-    post = post,
-    seq = 0
-  )
-  data_onppseq <- list(
-    K = K,
-    n0 = n0,
-    n = n,
-    p = p,
-    len_X0 = len_X0,
-    len_y0 = len_y0,
-    X0 = X0,
-    startid_X0 = startid_X0,
-    y0 = y0,
-    startid_y0 = startid_y0,
-    X = X,
-    y = y,
-    a = a,
-    b = b,
-    V0 = V0,
-    mu0 = mu0,
-    alpha = alpha,
-    post = post,
-    seq = 1
-  )
-  data_npp <- list(
-    K = K,
-    n0 = n0,
-    n = n,
-    p = p,
-    len_X0 = len_X0,
-    len_y0 = len_y0,
-    X0 = X0,
-    startid_X0 = startid_X0,
-    y0 = y0,
-    startid_y0 = startid_y0,
-    X = X,
-    y = y,
-    a = a,
-    b = b,
-    V0 = V0,
-    mu0 = mu0,
-    tilde_a = tilde_a,
-    tilde_b = tilde_b,
-    post = post,
-    seq = 0
-  )
-  data_nppseq <- list(
-    K = K,
-    n0 = n0,
-    n = n,
-    p = p,
-    len_X0 = len_X0,
-    len_y0 = len_y0,
-    X0 = X0,
-    startid_X0 = startid_X0,
-    y0 = y0,
-    startid_y0 = startid_y0,
-    X = X,
-    y = y,
-    a = a,
-    b = b,
-    V0 = V0,
-    mu0 = mu0,
-    tilde_a = tilde_a,
-    tilde_b = tilde_b,
-    post = post,
-    seq = 1
-  )
-  # sample from the models
-  sample_delta_onpp <- gamma_model$sample(data = data_onpp, 
-                                              chains = 4, 
-                                              # parallel_chains = 4, 
-                                              iter_warmup = 2000, 
-                                              iter_sampling = 2000,
-                                              # adapt_delta = 0.9999999,
-                                              refresh = 0
-  )
-  sample_delta_onppseq <- gamma_model$sample(data = data_onppseq, 
-                                                 chains = 4, 
-                                                 # parallel_chains = 4, 
-                                                 iter_warmup = 2000, 
-                                                 iter_sampling = 2000,
-                                                #  adapt_delta = 0.999999,
-                                                 refresh = 0
-  )
-  sample_delta_npp <- delta_model$sample(data = data_npp, 
-                                             chains = 4, 
-                                             # parallel_chains = 4, 
-                                             iter_warmup = 2000, 
-                                             iter_sampling = 2000,
-                                            #  adapt_delta = 0.999999,
-                                             refresh = 0
-  )
-  sample_delta_nppseq <- delta_model$sample(data = data_nppseq, 
-                                                chains = 4, 
-                                                # parallel_chains = 4, 
-                                                iter_warmup = 2000, 
-                                                iter_sampling = 2000,
-                                                # adapt_delta = 0.999999,
-                                                refresh = 0
-  )
-  # # save output files
-  # save_dir <- "results/cmdstan_outputs"
-  # if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-  # sample_delta_npp$save_output_files(dir = save_dir)
-  # sample_delta_nppseq$save_output_files(dir = save_dir)
-  # sample_delta_onpp$save_output_files(dir = save_dir)
-  # sample_delta_onppseq$save_output_files(dir = save_dir)
-  
-  # get diagnostics
-  diagnostics_onpp <- sample_delta_onpp$sampler_diagnostics()
-  diagnostics_onppseq <- sample_delta_onppseq$sampler_diagnostics()
-  diagnostics_npp <- sample_delta_npp$sampler_diagnostics()
-  diagnostics_nppseq <- sample_delta_nppseq$sampler_diagnostics()
-  
-  # get divergences
-  divergences_onpp <- sum((diagnostics_onpp[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_onppseq <- sum((diagnostics_onppseq[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_npp <- sum((diagnostics_npp[, , "divergent__"] %>% as_draws_df())$divergent__)
-  divergences_nppseq <- sum((diagnostics_nppseq[, , "divergent__"] %>% as_draws_df())$divergent__)
-  
-  # get draws
-  draws_delta_onpp <- sample_delta_onpp$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_onppseq <- sample_delta_onppseq$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_npp <- sample_delta_npp$draws(variables = "delta") %>% as_draws_matrix()
-  draws_delta_nppseq <- sample_delta_nppseq$draws(variables = "delta") %>% as_draws_matrix()
-  
-  theta_npp <- sample_delta_npp$draws(variables = "theta") %>% as_draws_matrix() 
-  theta_nppseq <- sample_delta_nppseq$draws(variables = "theta") %>% as_draws_matrix()
-  theta_onpp <- sample_delta_onpp$draws(variables = "theta") %>% as_draws_matrix()
-  theta_onppseq <- sample_delta_onppseq$draws(variables = "theta") %>% as_draws_matrix()
-  
-  return(list(hattheta_npp = colMeans(theta_npp),
-              hattheta_nppseq = colMeans(theta_nppseq),
-              hattheta_onpp = colMeans(theta_onpp),
-              hattheta_onppseq = colMeans(theta_onppseq),
-              hatdelta_npp = colMeans(draws_delta_npp),
-              hatdelta_nppseq = colMeans(draws_delta_nppseq),
-              hatdelta_onpp = colMeans(draws_delta_onpp),
-              hatdelta_onppseq = colMeans(draws_delta_onppseq),
-              divergences = list(divergences_npp = divergences_npp,
-                                 divergences_nppseq = divergences_nppseq,
-                                 divergences_onpp = divergences_onpp,
-                                 divergences_onppseq = divergences_onppseq),
-              delta_npp = draws_delta_npp,
-              delta_nppseq = draws_delta_nppseq,
-              delta_onpp = draws_delta_onpp,
-              delta_onppseq = draws_delta_onppseq,
-              theta_npp = theta_npp,
-              theta_nppseq = theta_nppseq,
-              theta_onpp = theta_onpp,
-              theta_onppseq = theta_onppseq
-  ))
+  # sample from the models -- no adapt_delta override here (matches the
+  # original, which left it commented out), so cmdstanr's own default is
+  # used unless the caller supplies one via sampler_args.
+  fits <- .fit_family(gamma_model, delta_model,
+                       data_variants$onpp, data_variants$onppseq,
+                       data_variants$npp, data_variants$nppseq,
+                       sampler_args)
+
+  eta_draws <- .extract_draws(fits, "eta")
+  theta_draws <- lapply(fits, function(fit) fit$draws(variables = "theta") %>% as_draws_matrix())
+
+  .assemble_sce_result(fits, eta_draws, theta_draws)
 }
 
 # function to run simulations in parallel
-sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model){
-  # Start a cluster with the desired number of cores
+sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model, seed = NULL) {
+  # Start a cluster with the desired number of cores. on.exit() guarantees
+  # the cluster is torn down even if something below errors (previously a
+  # failed pblapply() run left worker processes running).
   cl <- makeCluster(num_cores)
-  # Load the required packages
+  on.exit(stopCluster(cl), add = TRUE)
+
+  # Optional reproducibility: nothing in this codebase previously called
+  # set.seed() anywhere, so re-running a simulation batch never gave the
+  # same numbers twice. A plain set.seed() in the calling script wouldn't
+  # be enough here since the actual random draws (rbinom/rpois/rnorm inside
+  # sample_sce_*(), plus cmdstan's own sampling) happen on the *worker*
+  # processes, which each start with their own independent RNG state.
+  # clusterSetRNGStream() switches every worker to the L'Ecuyer-CMRG
+  # generator and seeds it deterministically from `seed`, so the same
+  # `seed` + `num_cores` + `num_sim` reproduces the same batch of
+  # replicates. Leave `seed = NULL` (the default) to keep the old
+  # non-reproducible behaviour.
+  if (!is.null(seed)) {
+    clusterSetRNGStream(cl, seed)
+  }
+
+  # Load only the packages sample_sce_*() actually needs on the workers.
+  # (The original loaded the full tidyverse on every worker for what's
+  # really just dplyr's %>%/pull(); tidyverse also pulls in ggplot2, tidyr,
+  # readr, purrr, stringr and forcats, none of which are used here, and
+  # that's meaningfully slower to load on every one of num_cores workers,
+  # every time sim_sce() is called.)
   clusterEvalQ(cl, {
     library(cmdstanr)
-    library(MCMCpack)
     library(dplyr)
-    library(tidyverse)
     library(posterior)
   })
   # Export the models to the cluster
-  clusterExport(cl, 
-                varlist = c("gamma_model", 
+  clusterExport(cl,
+                varlist = c("gamma_model",
                             "delta_model"),
                 envir = environment()
   )
-  
+  # Export the internal helpers sample_sce_*() relies on. These live in the
+  # global environment (this file is source()'d at top level), not in
+  # sim_sce()'s own call frame, so they need their own clusterExport() with
+  # envir = globalenv(). If you add another shared helper near the top of
+  # this file, add its name here too.
+  clusterExport(cl,
+                varlist = c(".build_variant_data", ".fit_family",
+                            ".extract_draws", ".assemble_sce_result",
+                            ".count_divergences"),
+                envir = globalenv()
+  )
+
   # Run simulations in parallel
   if (model == "bin"){
     sample_sce <- sample_sce_bin
-    rep_sce <- replicate(num_sim, sce, simplify = FALSE)
   } else if (model == "poi"){
     sample_sce <- sample_sce_poi
-    rep_sce <- replicate(num_sim, sce, simplify = FALSE)
   } else if (model == "normal_fixed_var"){
     sample_sce <- sample_sce_normal_fixed_var
-    rep_sce <- replicate(num_sim, sce, simplify = FALSE)
   } else if (model == "lm"){
     sample_sce <- sample_sce_lm
-    rep_sce <- sce$data
   } else {
     stop("Invalid model type. Choose from 'bin', 'poi', 'normal_fixed_var', or 'lm'.")
   }
 
   pbapply::pboptions(type = "timer")
+  # Each replicate is wrapped in tryCatch() so that one bad replicate (e.g.
+  # a cmdstan sampling failure) doesn't abort the whole batch and lose every
+  # already-completed replicate -- which, at n_sim in the hundreds and
+  # several minutes per replicate, used to mean losing hours of compute for
+  # one flaky fit. Failed replicates are dropped (with a warning) before
+  # results are combined below; previously they used replicate(num_sim, sce,
+  # simplify = FALSE) to build a list of num_sim identical copies of `sce`
+  # just so pblapply() had something the right length to iterate over --
+  # iterating over seq_len(num_sim) directly avoids that up-front copying
+  # (the randomness comes from inside sample_sce(), not from `sce` itself).
   if (model == "lm") {
-    results <- pbapply::pblapply( 
-                       rep_sce, 
-                       par_list = sce$par,
-                       sample_sce,
-                       gamma_model = gamma_model,
-                       delta_model = delta_model,
-                       cl = cl
-                      )
+    rep_sce <- sce$data
+    results <- pbapply::pblapply(
+      rep_sce,
+      function(data, par_list, gamma_model, delta_model) {
+        tryCatch(
+          sample_sce(par_list, data, gamma_model, delta_model),
+          error = function(e) list(.failed = TRUE, .error = conditionMessage(e))
+        )
+      },
+      par_list = sce$par,
+      gamma_model = gamma_model,
+      delta_model = delta_model,
+      cl = cl
+    )
   } else {
-    results <- pbapply::pblapply( 
-                       rep_sce, 
-                       sample_sce,
-                       gamma_model = gamma_model,
-                       delta_model = delta_model,
-                       cl = cl
-                      )
+    results <- pbapply::pblapply(
+      seq_len(num_sim),
+      function(i, sce, gamma_model, delta_model) {
+        tryCatch(
+          sample_sce(sce, gamma_model = gamma_model, delta_model = delta_model),
+          error = function(e) list(.failed = TRUE, .error = conditionMessage(e))
+        )
+      },
+      sce = sce,
+      gamma_model = gamma_model,
+      delta_model = delta_model,
+      cl = cl
+    )
   }
-  
-  
-  # Stop the cluster after computation
-  stopCluster(cl)
-  
+
+  # Drop and report any failed replicates before combining results.
+  failed <- vapply(results, function(x) isTRUE(x$.failed), logical(1))
+  if (any(failed)) {
+    msgs <- unique(vapply(results[failed], `[[`, character(1), ".error"))
+    warning(sprintf("sim_sce(): %d/%d replicate(s) failed and were dropped:\n  - %s",
+                     sum(failed), length(results), paste(msgs, collapse = "\n  - ")),
+            call. = FALSE)
+    results <- results[!failed]
+  }
+  if (length(results) == 0) {
+    stop("sim_sce(): every replicate failed; nothing to combine.", call. = FALSE)
+  }
+
   # combine results
   if (model == "lm") {
     hattheta <- list()
@@ -784,14 +497,14 @@ sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model){
       hattheta_onppseq = sapply(results, function(x) x$hattheta_onppseq)
     )
   }
-  
-  
+
+
   divergences <- data.frame(divergences_npp = sum(sapply(results, function(x) x$divergences$divergences_npp)),
                             divergences_nppseq = sum(sapply(results, function(x) x$divergences$divergences_nppseq)),
                             divergences_onpp = sum(sapply(results, function(x) x$divergences$divergences_onpp)),
                             divergences_onppseq = sum(sapply(results, function(x) x$divergences$divergences_onppseq))
   )
-  
+
   hatdelta <- list()
   for (i in 1:length(results[[1]]$hatdelta_npp)){
     hatdelta[[i]] <- data.frame(
@@ -801,8 +514,8 @@ sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model){
       hatdelta_onppseq = sapply(results, function(x) x$hatdelta_onppseq[i])
     )
   }
-  
-  return(list(hattheta = hattheta, 
+
+  return(list(hattheta = hattheta,
               hatdelta = hatdelta,
               divergences = divergences,
               delta = lapply(results, function(x) list(delta_npp = x$delta_npp,
@@ -818,103 +531,51 @@ sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model){
   ))
 }
 
-# Extract draws from the samples
-get_hat_par <- function(samples) {
-  hat_delta_npp <- do.call(rbind, 
-                           lapply(samples, 
-                                  function(x) colMeans(x$draws_delta_npp)))
-  hat_delta_nppseq <- do.call(rbind,
-                              lapply(samples, 
-                                     function(x) colMeans(x$draws_delta_nppseq)))
-  hat_delta_onpp <- do.call(rbind,
-                            lapply(samples, 
-                                   function(x) colMeans(x$draws_delta_onpp)))
-  hat_delta_onppseq <- do.call(rbind,
-                               lapply(samples, 
-                                      function(x) colMeans(x$draws_delta_onppseq)))
-  hat_beta_npp <- do.call(rbind,
-                          lapply(samples, 
-                                 function(x) colMeans(x$draws_beta_npp)))
-  hat_beta_nppseq <- do.call(rbind,
-                             lapply(samples, 
-                                    function(x) colMeans(x$draws_beta_nppseq)))
-  hat_beta_onpp <- do.call(rbind,
-                           lapply(samples, 
-                                  function(x) colMeans(x$draws_beta_onpp)))
-  hat_beta_onppseq <- do.call(rbind,
-                              lapply(samples, 
-                                     function(x) colMeans(x$draws_beta_onppseq)))
-  hat_sigma_npp <- do.call(rbind,
-                           lapply(samples, 
-                                  function(x) colMeans(x$draws_sigma_npp)))
-  hat_sigma_nppseq <- do.call(rbind,
-                              lapply(samples, 
-                                     function(x) colMeans(x$draws_sigma_nppseq)))
-  hat_sigma_onpp <- do.call(rbind,
-                            lapply(samples, 
-                                   function(x) colMeans(x$draws_sigma_onpp)))
-  hat_sigma_onppseq <- do.call(rbind,
-                               lapply(samples, 
-                                      function(x) colMeans(x$draws_sigma_onppseq)))
-  hat_delta <- lapply(seq_len(ncol(hat_delta_npp)), function(i) {
-    cbind(hat_delta_npp[,i],
-          hat_delta_nppseq[,i],
-          hat_delta_onpp[,i],
-          hat_delta_onppseq[,i])
-  })
-  hat_theta <- lapply(1:(ncol(hat_beta_npp) + 1), function(i) {
-    if (i <= ncol(hat_beta_npp)) {
-      cbind(hat_beta_npp[,i],
-            hat_beta_nppseq[,i],
-            hat_beta_onpp[,i],
-            hat_beta_onppseq[,i])
-    } else {
-      cbind(hat_sigma_npp,
-            hat_sigma_nppseq,
-            hat_sigma_onpp,
-            hat_sigma_onppseq)
-    }
-    
-  })
-  return(list(hatdelta = hat_delta,
-              hattheta = hat_theta))
-}
+# get_hat_par() was removed here: it was never called anywhere in this
+# repository (confirmed by search) and referenced fields
+# (draws_beta_*/draws_sigma_*) that none of the sample_sce_*() functions
+# above actually produce -- calling it would have errored. It looks like
+# leftover code from an earlier version of the pipeline. Recoverable from
+# git history if it's still needed.
 
 # function to plot boxplots
 plot_boxplot <- function(draws, variable) {
-  # create data frame
-  nc1 <- length(draws[,1])
-  nc2 <- length(draws[,2])
-  nc3 <- length(draws[,3])
-  nc4 <- length(draws[,4])
-  
-  c <- data.frame(x=c(rep("NPP1",nc1),
-                      rep("NPP2",nc2), 
-                      rep("ONPP1",nc3),
-                      rep("ONPP2",nc4)), 
+  # create data frame (all four columns/elements always have the same
+  # number of draws, so one length computation suffices)
+  n_draws <- length(draws[,1])
+
+  c <- data.frame(x=c(rep("NPP1",n_draws),
+                      rep("NPP2",n_draws),
+                      rep("ONPP1",n_draws),
+                      rep("ONPP2",n_draws)),
                   y=c(draws[,1],
                       draws[,2],
                       draws[,3],
                       draws[,4])
   )
-  
+
   c$x <- factor(c$x,levels=c('NPP1','NPP2','ONPP1','ONPP2'),ordered=TRUE)
-  
+
   # plot
   box <- ggplot(c, aes(x=x, y=y, fill=x)) +
-    theme_bw()+labs(x = NULL) + 
+    theme_bw()+labs(x = NULL) +
     labs(y = variable)+
     stat_boxplot(geom ='errorbar', coef = 0.5, width = 0.25)+
-    geom_boxplot(outlier.colour="black", 
+    geom_boxplot(outlier.colour="black",
                  width = 0.4, outlier.size = 0.3, coef = 0.5)+
-    stat_summary(fun = mean, colour="yellow3", geom="point", 
+    stat_summary(fun = mean, colour="yellow3", geom="point",
                  shape=18, size=3, show.legend = FALSE)+
     theme(legend.position="none",
           axis.title.y=element_text(angle= -270,  face='bold', size=11))+
     scale_fill_manual(values=c("#999999","red2", "green4", "dodgerblue1"))+
-    scale_x_discrete(labels=c(expression(NPP), expression(NPP[seq]), 
+    scale_x_discrete(labels=c(expression(NPP), expression(NPP[seq]),
                               expression(ONPP), expression(ONPP[seq]))
     )
+  # (previously ended on the bare assignment `box <- ggplot(...)`, which only
+  # "worked" as a return value because of R's last-expression-return rule --
+  # an explicit return() is less of a landmine for the next person who
+  # appends a line after this.)
+  return(box)
 }
 
 # function to compute BCI
@@ -934,25 +595,32 @@ compute_bci <- function(list_draws, alpha){
   ))
 }
 
-plot_sce_bin <- function(j) {
+plot_sce_bin <- function(j,
+                          sim_sces = get("sim_sces", envir = .GlobalEnv),
+                          true_value = get("true_value", envir = .GlobalEnv)) {
+  # sim_sces/true_value default to looking up globals of the same name, so
+  # existing call sites like plot_sce_bin(j) keep working unchanged -- but
+  # the dependency is now visible in the signature and can be overridden
+  # (e.g. for testing) instead of being an invisible requirement on the
+  # caller's global environment.
   sim <- sim_sces[[j]]
   sce <- as.roman(ceiling(j/3))
   sce <- ifelse(j %% 3 == 1, paste0(sce,".I"), ifelse(j %% 3 == 2, paste0(sce,".II"), paste0(sce,".III")))
   plots_delta <- lapply(seq_along(sim$hatdelta), function(i) {
-    plot <- plot_boxplot(sim$hatdelta[[i]], bquote(hat(delta)[.(i)])) + 
+    plot <- plot_boxplot(sim$hatdelta[[i]], bquote(hat(delta)[.(i)])) +
       coord_flip() +
       ggtitle(paste0("Scenario ", sce))
-      
+
     if (i>1) {
       plot <- plot + scale_x_discrete(labels = NULL) + ggtitle(NULL)
     }
     return(plot)
   })
-  plot_theta <- plot_boxplot(sim$hattheta, expression(hat(theta))) + 
+  plot_theta <- plot_boxplot(sim$hattheta, expression(hat(theta))) +
     geom_hline(yintercept = true_value, linetype = "dotted", color = "red", size = 1) +
     coord_flip()
   # Combine plots
-  plot <- Reduce(`+`, plots_delta) + plot_theta + plot_layout(ncol = length(plots_delta) + 1) + 
+  plot <- Reduce(`+`, plots_delta) + plot_theta + plot_layout(ncol = length(plots_delta) + 1) +
     scale_x_discrete(labels = NULL)
   return(plot)
 }
@@ -1266,7 +934,11 @@ plot_bci <- function(bci, sim, true_val, prob, coverage, scenario, model) {
   return(comb_plot)
 }
 
-plot_sce_lm <- function(j, hat) {
+plot_sce_lm <- function(j, hat,
+                         betastar = get("betastar", envir = .GlobalEnv),
+                         sgstar = get("sgstar", envir = .GlobalEnv)) {
+  # betastar/sgstar default to looking up globals of the same name (see the
+  # note in plot_sce_bin() above) so existing call sites keep working.
   sim <- hat[[j]]
   true_value <- c(betastar, sgstar)
   sce <- as.roman(ceiling(j/3))
@@ -1282,24 +954,24 @@ plot_sce_lm <- function(j, hat) {
   plot_theta <- lapply(seq_along(sim$hattheta), function(i) {
     if(i <= length(betastar)) {
       name <- bquote(hat(beta)[.(i)])
-      plot <- plot_boxplot(sim$hattheta[[i]], name) + 
+      plot <- plot_boxplot(sim$hattheta[[i]], name) +
         geom_hline(yintercept = true_value[i], linetype = "dotted", color = "red", size = 1) +
         coord_flip()
     } else {
       name <- bquote(hat(sigma^2))
-      plot <- plot_boxplot(sim$hattheta[[i]], name) + 
+      plot <- plot_boxplot(sim$hattheta[[i]], name) +
         geom_hline(yintercept = true_value[i]^2, linetype = "dotted", color = "red", size = 1) +
         coord_flip()
     }
-    
+
     if (i>1) {
       plot <- plot + scale_x_discrete(labels = NULL)
     }
     return(plot)
   })
-  plot_delta_ <- Reduce(`+`, plots_delta) + plot_layout(ncol = length(plots_delta)) + 
+  plot_delta_ <- Reduce(`+`, plots_delta) + plot_layout(ncol = length(plots_delta)) +
     scale_x_discrete(labels = NULL)
-  plot_theta_ <- Reduce(`+`, plot_theta) + plot_layout(ncol = length(plot_theta)) + 
+  plot_theta_ <- Reduce(`+`, plot_theta) + plot_layout(ncol = length(plot_theta)) +
     scale_x_discrete(labels = NULL)
   return(list(plot_delta_,
               plot_theta_))
@@ -1420,9 +1092,11 @@ plot_sim_delta <- function(sce, sim, sim_sces){
   return(combined_plots)
 }
 
-plot_sim_theta <- function(sce, sim, sim_sces){
+plot_sim_theta <- function(sce, sim, sim_sces, true_value = get("true_value", envir = .GlobalEnv)) {
+  # true_value defaults to looking up the global of the same name (see the
+  # note in plot_sce_bin() above) so existing call sites keep working.
   name_sce <- as.roman(ceiling(sce/3))
-  name_sce <- ifelse(sce %% 3 == 1, paste0(name_sce,".I"), 
+  name_sce <- ifelse(sce %% 3 == 1, paste0(name_sce,".I"),
                      ifelse(sce %% 3 == 2, paste0(name_sce,".II"), paste0(name_sce,".III")))
   plot_theta <- ggplot() +
     geom_density(aes(x = sim_sces[[sce]]$theta[[sim]]$theta_npp, color = "NPP"), linewidth = 0.8) +
@@ -1442,9 +1116,11 @@ plot_sim_theta <- function(sce, sim, sim_sces){
   return(plot_theta)
 }
 
-plot_sce3_theta <- function(sub_sce, sim, sim_sces){
+plot_sce3_theta <- function(sub_sce, sim, sim_sces, true_value = get("true_value", envir = .GlobalEnv)) {
+  # true_value defaults to looking up the global of the same name (see the
+  # note in plot_sce_bin() above) so existing call sites keep working.
   name_sce <- as.roman(ceiling(3))
-  name_sce <- ifelse(sub_sce %% 3 == 1, paste0(name_sce,".I"), 
+  name_sce <- ifelse(sub_sce %% 3 == 1, paste0(name_sce,".I"),
                      ifelse(sub_sce %% 3 == 2, paste0(name_sce,".II"), paste0(name_sce,".III")))
   sim_sub_sce <- sim_sces[[sub_sce]]
   plot_theta <- lapply(1:length(sim_sub_sce), function(i) {
@@ -1463,13 +1139,13 @@ plot_sce3_theta <- function(sub_sce, sim, sim_sces){
           ggtitle(label = paste0("Scenario ", name_sce),
                   subtitle = paste0("(", LETTERS[i], ")"))
     } else {
-      plot <- plot + 
+      plot <- plot +
         ggtitle(label = NULL,
                 subtitle = paste0("(", LETTERS[i], ")"))
     }
     return(plot)
   })
-  combined_plots <- wrap_plots(plot_theta, ncol = length(plot_theta)) + 
+  combined_plots <- wrap_plots(plot_theta, ncol = length(plot_theta)) +
     plot_layout(guides = "collect")
   return(combined_plots)
   }
@@ -1627,3 +1303,63 @@ plot_theta_prior <- function(samples){
   return(combined_plots)
   }
 
+
+plot_eta_post <- function(samples, sim, seq_norm = F){
+  title_npp <- paste0("NPP")
+  title_onpp <- paste0("ONPP")
+  if (seq_norm) {
+    samples$delta[[sim]]$delta_npp <- samples$delta[[sim]]$delta_nppseq
+    samples$delta[[sim]]$delta_onpp <- samples$delta[[sim]]$delta_onppseq
+    title_npp <- paste0("NPP-SEQ")
+    title_onpp <- paste0("ONPP-SEQ")
+  }
+  plot_npp <- ggplot() +
+    geom_density(bounds = c(0, 1), aes(x = samples$delta[[sim]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
+    geom_density(bounds = c(0, 1), aes(x = samples$delta[[sim]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
+    geom_density(bounds = c(0, 1), aes(x = samples$delta[[sim]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
+    scale_color_manual(name = NULL, 
+                        values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
+                                  "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
+                                  "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
+                        labels = c(expression(eta[1]), 
+                                  expression(eta[2]),
+                                  expression(eta[3]))) +
+    labs(x = expression(eta),
+          y = NULL) +
+    ggtitle(label = title_npp)
+  
+  plot_onpp <- ggplot() +
+    geom_density(bounds = c(0, 1), aes(x = samples$delta[[sim]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
+    geom_density(bounds = c(0, 1), aes(x = samples$delta[[sim]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
+    geom_density(bounds = c(0, 1), aes(x = samples$delta[[sim]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
+    scale_color_manual(name = NULL, 
+                        values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
+                                  "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
+                                  "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
+                        labels = c(expression(eta[1]), 
+                                  expression(eta[2]),
+                                  expression(eta[3]))) +
+    labs(x = expression(eta),
+          y = NULL) +
+    ggtitle(label = title_onpp)
+
+  plot_onpp_gamma <- ggplot() +
+    geom_density(bounds = c(0, 1), aes(x = samples$delta[[sim]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
+    geom_density(bounds = c(0, 1), aes(x = samples$delta[[sim]]$delta_onpp[,2] - samples$delta[[sim]]$delta_onpp[,1], 
+      color = "delta2"), linewidth = 0.8) +
+    geom_density(aes(x = samples$delta[[sim]]$delta_onpp[,3] - samples$delta[[sim]]$delta_onpp[,2], 
+      color = "delta3"), linewidth = 0.8) +
+    scale_color_manual(name = NULL, 
+                        values = c("delta1" = RColorBrewer::brewer.pal(3, "Set3")[1], 
+                                  "delta2" = RColorBrewer::brewer.pal(3, "Set3")[3],
+                                  "delta3" = RColorBrewer::brewer.pal(3, "Set3")[5]),
+                        labels = c(expression(gamma[1]), 
+                                  expression(gamma[2]),
+                                  expression(gamma[3]))) +
+    labs(x = expression(gamma),
+          y = NULL)
+  
+  combined_plots <- plot_npp + plot_onpp + plot_onpp_gamma +
+    plot_layout(guides = "collect")
+  return(combined_plots)
+}
