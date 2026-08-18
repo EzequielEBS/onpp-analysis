@@ -31,16 +31,16 @@ prepare_data_stan <- function(data) {
   X0 <- data %>%
     filter(grepl("hist", data_id)) %>%
     group_split(replicate) %>%
-    lapply(function(df) df %>% group_split(data_id) %>% 
+    lapply(function(df) df %>% group_split(data_id) %>%
               lapply(function(df) cbind(1, as.matrix(df %>% select(starts_with("X")))))
           )
   X <- data %>%
     filter(grepl("curr", data_id)) %>%
     group_split(replicate) %>%
-    lapply(function(df) 
+    lapply(function(df)
             cbind(1, as.matrix(df %>% select(starts_with("X"))))
           )
-  
+
   # Flatten the data
   flattened_X0 <- lapply(X0, function(x) flatten_data(x))
   flattened_y0 <- lapply(y0, function(x) flatten_data(x))
@@ -59,243 +59,111 @@ prepare_data_stan <- function(data) {
 }
 
 #-------------------------------------------------------------------------------
+# Scenario-building helpers
+#-------------------------------------------------------------------------------
+#
+# This file used to be ~1080 lines: the same "read 3 CSVs, wrap each in a
+# scenario list with an identical `par`, swap two historical-arm labels to
+# build the reordered variants, qs_save() 12-14 files" recipe copy-pasted
+# once per (varying beta/sigma) x (n0 >= n / n0 <= n) combination. Besides
+# the sheer duplication, that copy-pasting let a real bug slip in: the
+# "Order II" block's swap always checked for `data_id` values "hist2"/
+# "hist3" (no underscore), while the actual column values are "hist_1"/
+# "hist_2"/"hist_3" (confirmed by the very next block, "Order III", which
+# correctly uses the underscored names). Because "hist2"/"hist3" never
+# matched anything, `idx2`/`idx3` were always all-FALSE and the relabeling
+# was a silent no-op -- every "Order II" (sceII_*) scenario was actually
+# built from unmodified Order I data, in all four sections of the original
+# script. If you've already run this script and used its sceII_* outputs
+# (directly, or via simulations_lm.r/analysis results downstream), those
+# results reflect Order I data, not the intended reordered arms, and should
+# be regenerated.
+
+lm_default_par <- list(p = 3, a = 2, b = 1, V0 = diag(3), mu0 = rep(0, 3),
+                        al = 1, bl = 1, alpha = rep(1, 4))
+
+# Swaps two historical-arm data_id labels in place (e.g. "hist_2"/"hist_3"),
+# used to build the "reordered arms" scenario variants from the baseline
+# data without needing separate CSV files for every reordering.
+swap_data_id_labels <- function(df, label_a, label_b) {
+  idx_a <- df$data_id == label_a
+  idx_b <- df$data_id == label_b
+  df$data_id[idx_a] <- label_b
+  df$data_id[idx_b] <- label_a
+  df
+}
+
+make_scenario <- function(data, par = lm_default_par) {
+  list(par = par, data = prepare_data_stan(data))
+}
+
+# Builds and saves the 12 sce<Order>_<Congruence>_<suffix>.qs2 files (4
+# orders x 3 congruence levels) for one varying-type/n0-relation
+# combination (e.g. csv_type = "beta", n0_rel = "ge" covers the
+# "varying_beta_n0_ge_n" section). Order I is the data as-is; Order II
+# swaps the hist_2/hist_3 labels; Order III swaps hist_1/hist_3; Order IV
+# uses the separate "_neutral_" CSVs rather than a label swap. Congruence
+# I/II/III = high/small/no, per the "_high_cong_"/"_small_cong_"/
+# "_no_cong_" CSV naming.
+build_lm_order_scenarios <- function(csv_type, n0_rel, num_sim, par = lm_default_par) {
+  suffix <- sprintf("varying_%s_n0_%s_n", csv_type, n0_rel)
+  congruence <- c(I = "high_cong", II = "small_cong", III = "no_cong")
+
+  read_one <- function(cong_token, neutral = FALSE) {
+    neutral_part <- if (neutral) "neutral_" else ""
+    path <- sprintf("../../simulated-data-regression/data/sim_data_%s_%svarying_%s_p3_n0_%s_n.csv",
+                     cong_token, neutral_part, csv_type, n0_rel)
+    read_csv(path) %>% filter(replicate <= num_sim)
+  }
+
+  order_I   <- lapply(congruence, read_one)
+  order_II  <- lapply(order_I, swap_data_id_labels, label_a = "hist_2", label_b = "hist_3")
+  order_III <- lapply(order_I, swap_data_id_labels, label_a = "hist_1", label_b = "hist_3")
+  order_IV  <- lapply(congruence, read_one, neutral = TRUE)
+
+  orders <- list(I = order_I, II = order_II, III = order_III, IV = order_IV)
+
+  scenarios <- list()
+  for (order_key in names(orders)) {
+    for (cong_key in names(congruence)) {
+      key <- paste0(order_key, "_", cong_key)
+      scenarios[[key]] <- make_scenario(orders[[order_key]][[cong_key]], par)
+      file <- sprintf("results/sim_data/lm/sce%s_%s.qs2", key, suffix)
+      message("prepare_data_lm: ", key, " (", suffix, ") -> ", file)
+      qs2::qs_save(scenarios[[key]], file = file)
+    }
+  }
+  invisible(scenarios)
+}
+
+#-------------------------------------------------------------------------------
 # Generate scenarios
 #-------------------------------------------------------------------------------
 
 num_sim <- 200
-data_high_cong <- read_csv("../../simulated-data-regression/data/sim_data_high_cong_varying_beta_p3.csv") %>%
+
+## varying beta, n0 >= n -- small size (Order I only: high vs no congruence;
+## no small-congruence, reordered, or neutral variant exists at this size)
+data_sce1.1_small <- read_csv("../../simulated-data-regression/data/sim_data_high_cong_varying_beta_p3_n0_ge_n_small_size.csv") %>%
   filter(replicate <= num_sim)
-data_small_cong <- read_csv("../../simulated-data-regression/data/sim_data_small_cong_varying_beta_p3.csv") %>%
-  filter(replicate <= num_sim)
-data_no_cong <- read_csv("../../simulated-data-regression/data/sim_data_no_cong_varying_beta_p3.csv") %>%
-  filter(replicate <= num_sim)
-data_list <- list(
-  data_high_cong,
-  data_small_cong,
-  data_no_cong
-)
-
-
-sce1.1 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_list[[1]])
-)
-sce1.2 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_list[[2]])
-)
-sce1.3 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_list[[3]])
-)
-
-# change order
-data_sce2.1 <- lapply(data_list, function(df) { 
-  idx2 <- df$data_id == "hist2"
-  idx3 <- df$data_id == "hist3"
-  
-  df$data_id[idx2] <- "hist3"
-  df$data_id[idx3] <- "hist2"
-  
-  df
-})
-sce2.1 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_sce2.1[[1]])
-)
-sce2.2 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_sce2.1[[2]])
-)
-sce2.3 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_sce2.1[[3]])
-)
-
-data_sce3.1 <- lapply(data_list, function(df) { 
-  idx3 <- df$data_id == "hist_3"
-  idx1 <- df$data_id == "hist_1"
-  
-  df$data_id[idx3] <- "hist_1"
-  df$data_id[idx1] <- "hist_3"
-
-  df
-})
-sce3.1 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_sce3.1[[1]])
-)
-sce3.2 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_sce3.1[[2]])
-)
-sce3.3 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_sce3.1[[3]])
-)
-
-data_high_cong_neutral <- read_csv("../../simulated-data-regression/data/sim_data_high_cong_neutral_varying_beta_p3.csv") %>%
-  filter(replicate <= num_sim)
-data_small_cong_neutral <- read_csv("../../simulated-data-regression/data/sim_data_small_cong_neutral_varying_beta_p3.csv") %>%
-  filter(replicate <= num_sim)
-data_no_cong_neutral <- read_csv("../../simulated-data-regression/data/sim_data_no_cong_neutral_varying_beta_p3.csv") %>%
+data_sce1.3_small <- read_csv("../../simulated-data-regression/data/sim_data_incong_varying_beta_p3_n0_ge_n_small_size.csv") %>%
   filter(replicate <= num_sim)
 
-sce4.1 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_high_cong_neutral)
+qs2::qs_save(make_scenario(data_sce1.1_small),
+  file = "results/sim_data/lm/sceI_I_varying_beta_n0_ge_n_small_size.qs2"
 )
-sce4.2 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_small_cong_neutral)
-)
-sce4.3 <- list(
-  par = list(
-    p = 3,
-    a = 2,
-    b = 1,
-    V0 = diag(3),
-    mu0 = rep(0, 3),
-    tilde_a = 1,
-    tilde_b = 1,
-    alpha = rep(1, 4)
-  ),
-  data = prepare_data_stan(data_no_cong_neutral)
+qs2::qs_save(make_scenario(data_sce1.3_small),
+  file = "results/sim_data/lm/sceI_III_varying_beta_n0_ge_n_small_size.qs2"
 )
 
-# save scenarios
-qs2::qs_save(sce1.1,
-  file = "results/sim_data/lm/sceI_I.qs2"
-)
-qs2::qs_save(sce1.2,
-  file = "results/sim_data/lm/sceI_II.qs2"
-)
-qs2::qs_save(sce1.3,
-  file = "results/sim_data/lm/sceI_III.qs2"
-)
-qs2::qs_save(sce2.1,
-  file = "results/sim_data/lm/sceII_I.qs2"
-)
-qs2::qs_save(sce2.2,
-  file = "results/sim_data/lm/sceII_II.qs2"
-)
-qs2::qs_save(sce2.3,
-  file = "results/sim_data/lm/sceII_III.qs2"
-)
-qs2::qs_save(sce3.1,
-  file = "results/sim_data/lm/sceIII_I.qs2"
-)
-qs2::qs_save(sce3.2,
-  file = "results/sim_data/lm/sceIII_II.qs2"
-)
-qs2::qs_save(sce3.3,
-  file = "results/sim_data/lm/sceIII_III.qs2"
-)
-qs2::qs_save(sce4.1,
-  file = "results/sim_data/lm/sceIV_I.qs2"
-)
-qs2::qs_save(sce4.2,
-  file = "results/sim_data/lm/sceIV_II.qs2"
-)
-qs2::qs_save(sce4.3,
-  file = "results/sim_data/lm/sceIV_III.qs2"
-)
+## varying beta, n0 >= n
+build_lm_order_scenarios("beta", "ge", num_sim)
+
+## varying beta, n0 < n
+build_lm_order_scenarios("beta", "le", num_sim)
+
+## varying sigma, n0 > n
+build_lm_order_scenarios("sigma", "ge", num_sim)
+
+## varying sigma, n0 < n
+build_lm_order_scenarios("sigma", "le", num_sim)

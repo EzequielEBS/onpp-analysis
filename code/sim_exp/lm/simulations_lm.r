@@ -14,80 +14,80 @@ library(qs2)
 source("code/aux_fun_sim.R")
 
 gamma_model_lm <- cmdstan_model("code/models/lm/gamma_lm.stan")
-delta_model_lm <- cmdstan_model("code/models/lm/delta_lm.stan")
+delta_model_lm <- cmdstan_model("code/models/lm/eta_lm.stan")
 
-sce1.1 <- qs_read("results/sim_data/lm/sceI_I.qs2")
-sce1.2 <- qs_read("results/sim_data/lm/sceI_II.qs2")
-sce1.3 <- qs_read("results/sim_data/lm/sceI_III.qs2")
-sce2.1 <- qs_read("results/sim_data/lm/sceII_I.qs2")
-sce2.2 <- qs_read("results/sim_data/lm/sceII_II.qs2")
-sce2.3 <- qs_read("results/sim_data/lm/sceII_III.qs2")
-sce3.1 <- qs_read("results/sim_data/lm/sceIII_I.qs2")
-sce3.2 <- qs_read("results/sim_data/lm/sceIII_II.qs2")
-sce3.3 <- qs_read("results/sim_data/lm/sceIII_III.qs2")
-sce4.1 <- qs_read("results/sim_data/lm/sceIV_I.qs2")
-sce4.2 <- qs_read("results/sim_data/lm/sceIV_II.qs2")
-sce4.3 <- qs_read("results/sim_data/lm/sceIV_III.qs2")
-
-# run simulations
 n_cores <- 15
 n_sim <- 200
-sim1.1 <- sim_sce(model = "lm", n_cores,  n_sim, sce1.1, gamma_model_lm, delta_model_lm)
+
+#-------------------------------------------------------------------------------
+# Run simulations for the linear-model scenarios prepared by prepare_data_lm.r
+#-------------------------------------------------------------------------------
+#
+# prepare_data_lm.r writes one sce<Order>_<Congruence>_<suffix>.qs2 file per
+# (order I-IV) x (congruence I-III) combination, for each of four
+# varying-parameter/n0-relation sections (suffix). This used to be ~300
+# lines of copy-pasted `sceX.Y <- qs_read(...)` / `simX.Y <- sim_sce(...)` /
+# `qs_save(...)` blocks, one per scenario, repeated once per section. Same
+# fix as simulations_bin.R: one loop over the same order/congruence grid
+# that prepare_data_lm.r uses, driven by the same roman-numeral (input) /
+# arabic-numeral (output) naming convention, so the two files can't drift
+# out of sync about how many scenarios exist. All input/output file paths
+# are unchanged from the original script.
+# Reproducibility: every scenario gets its own fixed seed (derived from its
+# position in the order/congruence grid, offset by `seed_offset` so the four
+# sections and the small-size block don't reuse the same seeds) so
+# re-running this script reproduces the same 200 replicates per scenario.
+# See the `seed` argument added to sim_sce() in aux_fun_sim.R -- pass
+# seed = NULL to go back to the old non-reproducible behaviour.
+base_seed <- 20240521
+
+run_lm_scenarios <- function(suffix, n_cores, n_sim, seed_offset = 0) {
+  for (order_i in 1:4) {
+    for (cong_j in 1:3) {
+      order_roman <- as.character(as.roman(order_i))
+      cong_roman  <- as.character(as.roman(cong_j))
+      sce_file <- sprintf("results/sim_data/lm/sce%s_%s_%s.qs2", order_roman, cong_roman, suffix)
+      sim_file <- sprintf("results/samples/lm/sim%d_%d_lm_%s.qs2", order_i, cong_j, suffix)
+      message(sprintf("simulations_lm: sce%s_%s (%s) -> %s", order_roman, cong_roman, suffix, sim_file))
+      sce <- qs_read(sce_file)
+      seed <- base_seed + seed_offset + (order_i - 1) * 3 + cong_j
+      sim <- sim_sce(model = "lm", n_cores, n_sim, sce, gamma_model_lm, delta_model_lm, seed = seed)
+      qs_save(sim, file = sim_file)
+    }
+  }
+}
+
+#------------------------------------------------------------------------------
+# varying beta, n0 > n -- small size (Order I only: high vs no congruence)
+#------------------------------------------------------------------------------
+
+sce1.1 <- qs_read("results/sim_data/lm/sceI_I_varying_beta_n0_ge_n_small_size.qs2")
+sce1.3 <- qs_read("results/sim_data/lm/sceI_III_varying_beta_n0_ge_n_small_size.qs2")
+sim1.1 <- sim_sce(model = "lm", n_cores, n_sim, sce1.1, gamma_model_lm, delta_model_lm, seed = base_seed)
 qs_save(sim1.1,
-  file = "results/samples/lm/sim1_1_lm.qs2"
+  file = "results/samples/lm/sim1_1_lm_varying_beta_n0_ge_n_small_size.qs2"
 )
-
-sim1.2 <- sim_sce(model = "lm", n_cores,  n_sim, sce1.2, gamma_model_lm, delta_model_lm)
-qs_save(sim1.2,
-  file = "results/samples/lm/sim1_2_lm.qs2"
-)
-
-sim1.3 <- sim_sce(model = "lm", n_cores,  n_sim, sce1.3, gamma_model_lm, delta_model_lm)
+sim1.3 <- sim_sce(model = "lm", n_cores, n_sim, sce1.3, gamma_model_lm, delta_model_lm, seed = base_seed + 1)
 qs_save(sim1.3,
-  file = "results/samples/lm/sim1_3_lm.qs2"
+  file = "results/samples/lm/sim1_3_lm_varying_beta_n0_ge_n_small_size.qs2"
 )
 
-sim2.1 <- sim_sce(model = "lm", n_cores,  n_sim, sce2.1, gamma_model_lm, delta_model_lm)
-qs_save(sim2.1,
-  file = "results/samples/lm/sim2_1_lm.qs2"
-)
+#------------------------------------------------------------------------------
+# varying beta, n0 > n
+#------------------------------------------------------------------------------
+run_lm_scenarios("varying_beta_n0_ge_n", n_cores, n_sim, seed_offset = 100)
 
-sim2.2 <- sim_sce(model = "lm", n_cores,  n_sim, sce2.2, gamma_model_lm, delta_model_lm)
-qs_save(sim2.2,
-  file = "results/samples/lm/sim2_2_lm.qs2"
-)
+#------------------------------------------------------------------------------
+# varying beta, n0 < n
+#------------------------------------------------------------------------------
+run_lm_scenarios("varying_beta_n0_le_n", n_cores, n_sim, seed_offset = 200)
 
-sim2.3 <- sim_sce(model = "lm", n_cores,  n_sim, sce2.3, gamma_model_lm, delta_model_lm)
-qs_save(sim2.3,
-  file = "results/samples/lm/sim2_3_lm.qs2"
-)
+#------------------------------------------------------------------------------
+# varying sigma, n0 > n
+#------------------------------------------------------------------------------
+run_lm_scenarios("varying_sigma_n0_ge_n", n_cores, n_sim, seed_offset = 300)
 
-sim3.1 <- sim_sce(model = "lm", n_cores,  n_sim, sce3.1, gamma_model_lm, delta_model_lm)
-qs_save(sim3.1,
-  file = "results/samples/lm/sim3_1_lm.qs2"
-)
-
-sim3.2 <- sim_sce(model = "lm", n_cores,  n_sim, sce3.2, gamma_model_lm, delta_model_lm)
-qs_save(sim3.2,
-  file = "results/samples/lm/sim3_2_lm.qs2"
-)
-
-sim3.3 <- sim_sce(model = "lm", n_cores,  n_sim, sce3.3, gamma_model_lm, delta_model_lm)
-qs_save(sim3.3,
-  file = "results/samples/lm/sim3_3_lm.qs2"
-)
-
-sim4.1 <- sim_sce(model = "lm", n_cores,  n_sim, sce4.1, gamma_model_lm, delta_model_lm)
-qs_save(sim4.1,
-  file = "results/samples/lm/sim4_1_lm.qs2"
-)
-
-sim4.2 <- sim_sce(model = "lm", n_cores,  n_sim, sce4.2, gamma_model_lm, delta_model_lm)
-qs_save(sim4.2,
-  file = "results/samples/lm/sim4_2_lm.qs2"
-)
-
-sim4.3 <- sim_sce(model = "lm", n_cores,  n_sim, sce4.3, gamma_model_lm, delta_model_lm)
-qs_save(sim4.3,
-  file = "results/samples/lm/sim4_3_lm.qs2"
-)
+#------------------------------------------------------------------------------
+# varying sigma, n0 < n
+#------------------------------------------------------------------------------
+run_lm_scenarios("varying_sigma_n0_le_n", n_cores, n_sim, seed_offset = 400)
