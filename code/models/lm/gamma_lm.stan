@@ -13,21 +13,72 @@ functions {
          - a * log(b);
   }
 
-  // given prior (mu0, V0inv, a, b) and weighted data (eta_k, X0k, y0k),
-  // returns updated NIG parameters as a list encoded in a vector:
-  // [mu* (p), V*^{-1} lower tri (p*p), a*, b*]
-  // We return them as separate arguments via a struct-like approach.
-  // Instead we write a helper that directly returns log Z of updated params.
-  real log_Z_updated(vector mu0, matrix V0inv, real a, real b,
-                     matrix X0k, vector y0k, real eta_k, int p) {
-    matrix[p,p] Vstar_inv = V0inv + eta_k * X0k' * X0k;
-    matrix[p,p] Vstar    = inverse_spd(Vstar_inv);
-    vector[p]   mustar   = Vstar * (V0inv * mu0 + eta_k * X0k' * y0k);
-    real        astar    = a + 0.5 * eta_k * rows(y0k);
-    real        bstar    = b + 0.5 * (eta_k * dot_self(y0k)
+  // Pooled NPP effective-prior NIG parameters, packed as
+  // [vec(V_eta_inv) (p*p, column-major), mu_eta (p), a_eta (1), b_eta (1)]
+  vector npp_params(vector eta, vector X0, array[] int startid_X0,
+                     vector y0, array[] int startid_y0, array[] int n0,
+                     matrix V0inv, vector mu0, real a, real b, int K, int p) {
+    matrix[p,p] V_eta_inv = V0inv;
+    vector[p]   rhs       = V0inv * mu0;
+    real        a_eta     = a;
+    real        b_eta_sum = 0;  // accumulates eta_k * y0k'y0k
+
+    for (k in 1:K) {
+      matrix[n0[k],p] X0k = build_matrix_from_vector(X0, startid_X0[k], n0[k], p);
+      vector[n0[k]]   y0k = segment(y0, startid_y0[k], n0[k]);
+      V_eta_inv += eta[k] * X0k' * X0k;
+      rhs       += eta[k] * X0k' * y0k;
+      a_eta     += 0.5 * eta[k] * n0[k];
+      b_eta_sum += eta[k] * dot_self(y0k);
+    }
+
+    matrix[p,p] V_eta  = inverse_spd(V_eta_inv);
+    vector[p]   mu_eta = V_eta * rhs;
+    real b_eta = b + 0.5 * (b_eta_sum
                              + quad_form(V0inv, mu0)
-                             - quad_form(Vstar_inv, mustar));
-    return log_Z_NIG(mustar, Vstar, astar, bstar, p);
+                             - quad_form(V_eta_inv, mu_eta));
+
+    return append_row(append_row(to_vector(V_eta_inv), mu_eta), [a_eta, b_eta]');
+  }
+
+  // Pooled NPP-SEQ NIG parameters, packed as
+  // [vec(V_seq_inv) (p*p, column-major), mu_seq (p), a_seq (1), b_seq (1), logZ_k_sum (1)]
+  vector seq_params(vector eta, vector X0, array[] int startid_X0,
+                     vector y0, array[] int startid_y0, array[] int n0,
+                     matrix V0inv, vector mu0, real a, real b, int K, int p) {
+    matrix[p,p] V_seq_inv   = rep_matrix(0, p, p);
+    vector[p]   rhs_seq     = rep_vector(0, p);
+    real        a_seq       = (K-1)*(0.5*p+1);
+    real        b_seq_quad  = 0;
+    real        logZ_k_sum  = 0;
+
+    for (k in 1:K) {
+      matrix[n0[k],p] X0k = build_matrix_from_vector(X0, startid_X0[k], n0[k], p);
+      vector[n0[k]]   y0k = segment(y0, startid_y0[k], n0[k]);
+
+      // per-dataset NIG update
+      matrix[p,p] Vk_inv = V0inv + eta[k] * X0k' * X0k;
+      matrix[p,p] Vk     = inverse_spd(Vk_inv);
+      vector[p]   muk    = Vk * (V0inv * mu0 + eta[k] * X0k' * y0k);
+      real        ak     = a + 0.5 * eta[k] * n0[k];
+      real        bk     = b + 0.5 * (eta[k] * dot_self(y0k)
+                             + quad_form(V0inv, mu0)
+                             - quad_form(Vk_inv, muk));
+
+      logZ_k_sum += log_Z_NIG(muk, Vk, ak, bk, p);
+
+      // accumulate V_seq_inv = sum_k Vk_inv - (K-1)*V0inv
+      V_seq_inv  += Vk_inv;
+      rhs_seq    += Vk_inv * muk;
+      a_seq      += ak;
+      b_seq_quad += bk + 0.5 * quad_form(Vk_inv, muk);
+    }
+
+    matrix[p,p] V_seq  = inverse_spd(V_seq_inv);
+    vector[p]   mu_seq = V_seq * rhs_seq;
+    real b_seq = b_seq_quad - 0.5 * quad_form(V_seq_inv, mu_seq);
+
+    return append_row(append_row(append_row(to_vector(V_seq_inv), mu_seq), [a_seq, b_seq]'), [logZ_k_sum]');
   }
 }
 
@@ -81,32 +132,15 @@ model {
       //      then if current data, log Z(tilde_mu_eta, ...) - log Z(mu_eta, ...)
       // -------------------------------------------------------
 
-      // build pooled effective prior parameters
-      matrix[p,p] V_eta_inv = V0inv;
-      vector[p]   rhs       = V0inv * mu0;
-      real        a_eta     = a;
-      real        b_eta_sum = 0;  // accumulates eta_k * y0k'y0k
+      vector[p*p + p + 2] pk = npp_params(eta, X0, startid_X0, y0, startid_y0, n0,
+                                           V0inv, mu0, a, b, K, p);
+      matrix[p,p] V_eta_inv = to_matrix(head(pk, p*p), p, p);
+      vector[p]   mu_eta    = segment(pk, p*p + 1, p);
+      real        a_eta     = pk[p*p + p + 1];
+      real        b_eta     = pk[p*p + p + 2];
 
-      for (k in 1:K) {
-        matrix[n0[k],p] X0k = build_matrix_from_vector(X0, startid_X0[k], n0[k], p);
-        vector[n0[k]]   y0k = segment(y0, startid_y0[k], n0[k]);
-        V_eta_inv += eta[k] * X0k' * X0k;
-        rhs       += eta[k] * X0k' * y0k;
-        a_eta     += 0.5 * eta[k] * n0[k];
-        b_eta_sum += eta[k] * dot_self(y0k);
-      }
-
-      matrix[p,p] V_eta  = inverse_spd(V_eta_inv);
-      vector[p]   mu_eta = V_eta * rhs;
-      real b_eta = b + 0.5 * (b_eta_sum
-                               + quad_form(V0inv, mu0)
-                               - quad_form(V_eta_inv, mu_eta));
-
+      matrix[p,p] V_eta = inverse_spd(V_eta_inv);
       real logZ_eta = log_Z_NIG(mu_eta, V_eta, a_eta, b_eta, p);
-
-      // subtract log Z of prior (normalizing constant c0(eta))
-      // log pi(eta | D0) += log Z(mu_eta,...) - log Z(mu0, V0, a, b)
-      // but log Z(mu0,V0,a,b) is constant in eta so we can drop it
 
       // now add log BF for current data D
       // log Z(tilde_mu_eta, tilde_V_eta, tilde_a_eta, tilde_b_eta) - logZ_eta
@@ -128,38 +162,13 @@ model {
       //          then log BF for current data
       // -------------------------------------------------------
 
-      // first pass: compute all per-dataset updated parameters
-      matrix[p,p] V_seq_inv   = rep_matrix(0, p, p);
-      vector[p]   rhs_seq     = rep_vector(0, p);
-      real        a_seq       = (K-1)*(0.5*p+1);
-      real        b_seq_quad  = 0;
-      real        logZ_k_sum  = 0;
-
-      for (k in 1:K) {
-        matrix[n0[k],p] X0k = build_matrix_from_vector(X0, startid_X0[k], n0[k], p);
-        vector[n0[k]]   y0k = segment(y0, startid_y0[k], n0[k]);
-
-        // per-dataset NIG update
-        matrix[p,p] Vk_inv = V0inv + eta[k] * X0k' * X0k;
-        matrix[p,p] Vk     = inverse_spd(Vk_inv);
-        vector[p]   muk    = Vk * (V0inv * mu0 + eta[k] * X0k' * y0k);
-        real        ak     = a + 0.5 * eta[k] * n0[k];
-        real        bk     = b + 0.5 * (eta[k] * dot_self(y0k)
-                               + quad_form(V0inv, mu0)
-                               - quad_form(Vk_inv, muk));
-
-        logZ_k_sum += log_Z_NIG(muk, Vk, ak, bk, p);
-
-        // accumulate V_seq_inv = sum_k Vk_inv - (K-1)*V0inv
-        V_seq_inv  += Vk_inv;
-        rhs_seq    += Vk_inv * muk;
-        a_seq      += ak;
-        b_seq_quad += bk + 0.5 * quad_form(Vk_inv, muk);
-      }
-
-      matrix[p,p] V_seq  = inverse_spd(V_seq_inv);
-      vector[p]   mu_seq = V_seq * rhs_seq;
-      real b_seq = b_seq_quad - 0.5 * quad_form(V_seq_inv, mu_seq);
+      vector[p*p + p + 3] pk = seq_params(eta, X0, startid_X0, y0, startid_y0, n0,
+                                           V0inv, mu0, a, b, K, p);
+      matrix[p,p] V_seq_inv  = to_matrix(head(pk, p*p), p, p);
+      vector[p]   mu_seq     = segment(pk, p*p + 1, p);
+      real        a_seq      = pk[p*p + p + 1];
+      real        b_seq      = pk[p*p + p + 2];
+      real        logZ_k_sum = pk[p*p + p + 3];
 
       // log BF for current data D
       matrix[p,p] tilde_V_seq_inv = V_seq_inv + X' * X;
@@ -175,41 +184,17 @@ model {
     }
   } else {
     if (seq == 1) {
-      matrix[p,p] V_seq_inv   = rep_matrix(0, p, p);
-      vector[p]   rhs_seq     = rep_vector(0, p);
-      real        a_seq       = (K-1)*(0.5*p+1);
-      real        b_seq_quad  = 0;
-      real        logZ_k_sum  = 0;
+      vector[p*p + p + 3] pk = seq_params(eta, X0, startid_X0, y0, startid_y0, n0,
+                                           V0inv, mu0, a, b, K, p);
+      matrix[p,p] V_seq_inv  = to_matrix(head(pk, p*p), p, p);
+      vector[p]   mu_seq     = segment(pk, p*p + 1, p);
+      real        a_seq      = pk[p*p + p + 1];
+      real        b_seq      = pk[p*p + p + 2];
+      real        logZ_k_sum = pk[p*p + p + 3];
 
-      for (k in 1:K) {
-        matrix[n0[k],p] X0k = build_matrix_from_vector(X0, startid_X0[k], n0[k], p);
-        vector[n0[k]]   y0k = segment(y0, startid_y0[k], n0[k]);
-
-        // per-dataset NIG update
-        matrix[p,p] Vk_inv = V0inv + eta[k] * X0k' * X0k;
-        matrix[p,p] Vk     = inverse_spd(Vk_inv);
-        vector[p]   muk    = Vk * (V0inv * mu0 + eta[k] * X0k' * y0k);
-        real        ak     = a + 0.5 * eta[k] * n0[k];
-        real        bk     = b + 0.5 * (eta[k] * dot_self(y0k)
-                               + quad_form(V0inv, mu0)
-                               - quad_form(Vk_inv, muk));
-
-        logZ_k_sum += log_Z_NIG(muk, Vk, ak, bk, p);
-
-        // accumulate V_seq_inv = sum_k Vk_inv - (K-1)*V0inv
-        V_seq_inv  += Vk_inv;
-        rhs_seq    += Vk_inv * muk;
-        a_seq      += ak;
-        b_seq_quad += bk + 0.5 * quad_form(Vk_inv, muk);
-      }
-
-      matrix[p,p] V_seq  = inverse_spd(V_seq_inv);
-      vector[p]   mu_seq = V_seq * rhs_seq;
-      real b_seq = b_seq_quad - 0.5 * quad_form(V_seq_inv, mu_seq);
-
+      matrix[p,p] V_seq = inverse_spd(V_seq_inv);
       real logZ_seq = log_Z_NIG(mu_seq, V_seq, a_seq, b_seq, p);
       target += logZ_seq - logZ_k_sum;
-
     }
   }
 }
@@ -233,25 +218,12 @@ generated quantities {
         //      then update with current data D
         // -------------------------------------------------------
 
-        matrix[p,p] V_eta_inv = V0inv;
-        vector[p]   rhs       = V0inv * mu0;
-        real        a_eta     = a;
-        real        b_eta_sum = 0;
-
-        for (k in 1:K) {
-          matrix[n0[k],p] X0k = build_matrix_from_vector(X0, startid_X0[k], n0[k], p);
-          vector[n0[k]]   y0k = segment(y0, startid_y0[k], n0[k]);
-          V_eta_inv += eta[k] * X0k' * X0k;
-          rhs       += eta[k] * X0k' * y0k;
-          a_eta     += 0.5 * eta[k] * n0[k];
-          b_eta_sum += eta[k] * dot_self(y0k);
-        }
-
-        matrix[p,p] V_eta  = inverse_spd(V_eta_inv);
-        vector[p]   mu_eta = V_eta * rhs;
-        real b_eta = b + 0.5 * (b_eta_sum
-                                + quad_form(V0inv, mu0)
-                                - quad_form(V_eta_inv, mu_eta));
+        vector[p*p + p + 2] pk = npp_params(eta, X0, startid_X0, y0, startid_y0, n0,
+                                             V0inv, mu0, a, b, K, p);
+        matrix[p,p] V_eta_inv = to_matrix(head(pk, p*p), p, p);
+        vector[p]   mu_eta    = segment(pk, p*p + 1, p);
+        real        a_eta     = pk[p*p + p + 1];
+        real        b_eta     = pk[p*p + p + 2];
 
         // update with D
         matrix[p,p] tilde_V_inv = V_eta_inv + X' * X;
@@ -268,34 +240,12 @@ generated quantities {
         //          then update with current data D
         // -------------------------------------------------------
 
-        matrix[p,p] V_seq_inv   = rep_matrix(0, p, p);
-        vector[p]   rhs_seq     = rep_vector(0, p);
-        real        a_seq       = (K-1)*(0.5*p+1);
-        real        b_seq_quad  = 0;
-
-        for (k in 1:K) {
-          matrix[n0[k],p] X0k = build_matrix_from_vector(X0, startid_X0[k], n0[k], p);
-          vector[n0[k]]   y0k = segment(y0, startid_y0[k], n0[k]);
-
-          // per-dataset NIG update
-          matrix[p,p] Vk_inv = V0inv + eta[k] * X0k' * X0k;
-          matrix[p,p] Vk     = inverse_spd(Vk_inv);
-          vector[p]   muk    = Vk * (V0inv * mu0 + eta[k] * X0k' * y0k);
-          real        ak     = a + 0.5 * eta[k] * n0[k];
-          real        bk     = b + 0.5 * (eta[k] * dot_self(y0k)
-                                + quad_form(V0inv, mu0)
-                                - quad_form(Vk_inv, muk));
-
-          // accumulate V_seq_inv = sum_k Vk_inv - (K-1)*V0inv
-          V_seq_inv  += Vk_inv;
-          rhs_seq    += Vk_inv * muk;
-          a_seq      += ak;
-          b_seq_quad += bk + 0.5 * quad_form(Vk_inv, muk);
-        }
-
-        matrix[p,p] V_seq  = inverse_spd(V_seq_inv);
-        vector[p]   mu_seq = V_seq * rhs_seq;
-        real b_seq = b_seq_quad - 0.5 * quad_form(V_seq_inv, mu_seq);
+        vector[p*p + p + 3] pk = seq_params(eta, X0, startid_X0, y0, startid_y0, n0,
+                                             V0inv, mu0, a, b, K, p);
+        matrix[p,p] V_seq_inv = to_matrix(head(pk, p*p), p, p);
+        vector[p]   mu_seq    = segment(pk, p*p + 1, p);
+        real        a_seq     = pk[p*p + p + 1];
+        real        b_seq     = pk[p*p + p + 2];
 
         // update with D
         matrix[p,p] tilde_V_inv = V_seq_inv + X' * X;

@@ -4,6 +4,44 @@ functions {
   real log_Z_normal1d(real mu, real tau2) {
     return 0.5 * log(tau2) + 0.5 * mu^2 / tau2;
   }
+
+  // Pooled NPP posterior: [mu_eta, tau_eta_inv2]
+  vector npp_mu_tau(vector eta, array[] int n0, array[] real ybar0, real sigma2,
+                     real mu0, real tau0_inv2, int K) {
+    real tau_eta_inv2 = tau0_inv2;
+    real rhs          = mu0 * tau0_inv2;
+
+    for (k in 1:K) {
+      tau_eta_inv2 += eta[k] * n0[k] / sigma2;
+      rhs          += eta[k] * n0[k] * ybar0[k] / sigma2;
+    }
+
+    real tau_eta2 = 1.0 / tau_eta_inv2;
+    real mu_eta   = tau_eta2 * rhs;
+    return [mu_eta, tau_eta_inv2]';
+  }
+
+  // Pooled NPP-SEQ posterior: [mu_seq, tau_seq_inv2, logZ_k_sum]
+  vector seq_mu_tau(vector eta, array[] int n0, array[] real ybar0, real sigma2,
+                     real mu0, real tau0_inv2, int K) {
+    real tau_seq_inv2 = 0;
+    real rhs_seq      = 0;
+    real logZ_k_sum   = 0;
+
+    for (k in 1:K) {
+      real tauk_inv2 = tau0_inv2 + eta[k] * n0[k] / sigma2;
+      real tauk2     = 1.0 / tauk_inv2;
+      real muk       = tauk2 * (mu0 * tau0_inv2 + eta[k] * n0[k] * ybar0[k] / sigma2);
+
+      logZ_k_sum    += log_Z_normal1d(muk, tauk2);
+      tau_seq_inv2  += tauk_inv2;
+      rhs_seq       += muk / tauk2;
+    }
+
+    real tau_seq2 = 1.0 / tau_seq_inv2;
+    real mu_seq   = tau_seq2 * rhs_seq;
+    return [mu_seq, tau_seq_inv2, logZ_k_sum]';
+  }
 }
 
 data {
@@ -41,16 +79,10 @@ model {
       // NPP
       // -------------------------------------------------------
 
-      real tau_eta_inv2 = tau0_inv2;
-      real rhs          = mu0 * tau0_inv2;
-
-      for (k in 1:K) {
-        tau_eta_inv2 += eta[k] * n0[k] / sigma2;
-        rhs          += eta[k] * n0[k] * ybar0[k] / sigma2;
-      }
-
-      real tau_eta2 = 1.0 / tau_eta_inv2;
-      real mu_eta   = tau_eta2 * rhs;
+      vector[2] m = npp_mu_tau(eta, n0, ybar0, sigma2, mu0, tau0_inv2, K);
+      real mu_eta       = m[1];
+      real tau_eta_inv2 = m[2];
+      real tau_eta2     = 1.0 / tau_eta_inv2;
 
       // update with D
       real tilde_tau_inv2 = tau_eta_inv2 + n / sigma2;
@@ -66,22 +98,10 @@ model {
       // NPP-SEQ
       // -------------------------------------------------------
 
-      real tau_seq_inv2 = 0;
-      real rhs_seq      = 0;
-      real logZ_k_sum   = 0;
-
-      for (k in 1:K) {
-        real tauk_inv2 = tau0_inv2 + eta[k] * n0[k] / sigma2;
-        real tauk2     = 1.0 / tauk_inv2;
-        real muk       = tauk2 * (mu0 * tau0_inv2 + eta[k] * n0[k] * ybar0[k] / sigma2);
-
-        logZ_k_sum    += log_Z_normal1d(muk, tauk2);
-        tau_seq_inv2  += tauk_inv2;
-        rhs_seq       += muk / tauk2;
-      }
-
-      real tau_seq2 = 1.0 / tau_seq_inv2;
-      real mu_seq   = tau_seq2 * rhs_seq;
+      vector[3] m = seq_mu_tau(eta, n0, ybar0, sigma2, mu0, tau0_inv2, K);
+      real mu_seq       = m[1];
+      real tau_seq_inv2 = m[2];
+      real logZ_k_sum   = m[3];
 
       // update with D
       real tilde_tau_inv2 = tau_seq_inv2 + n / sigma2;
@@ -94,22 +114,11 @@ model {
     }
   } else {
     if (seq == 1) {
-      real tau_seq_inv2 = 0;
-      real rhs_seq      = 0;
-      real logZ_k_sum   = 0;
-
-      for (k in 1:K) {
-        real tauk_inv2 = tau0_inv2 + eta[k] * n0[k] / sigma2;
-        real tauk2     = 1.0 / tauk_inv2;
-        real muk       = tauk2 * (mu0 * tau0_inv2 + eta[k] * n0[k] * ybar0[k] / sigma2);
-
-        logZ_k_sum    += log_Z_normal1d(muk, tauk2);
-        tau_seq_inv2  += tauk_inv2;
-        rhs_seq       += muk / tauk2;
-      }
-
-      real tau_seq2 = 1.0 / tau_seq_inv2;
-      real mu_seq   = tau_seq2 * rhs_seq;
+      vector[3] m = seq_mu_tau(eta, n0, ybar0, sigma2, mu0, tau0_inv2, K);
+      real mu_seq       = m[1];
+      real tau_seq_inv2 = m[2];
+      real logZ_k_sum   = m[3];
+      real tau_seq2     = 1.0 / tau_seq_inv2;
 
       // log BF for D
       target += log_Z_normal1d(mu_seq, tau_seq2)
@@ -126,16 +135,9 @@ generated quantities {
     if (post == 1) {
       if (seq == 0) {
 
-        real tau_eta_inv2 = tau0_inv2;
-        real rhs          = mu0 * tau0_inv2;
-
-        for (k in 1:K) {
-          tau_eta_inv2 += eta[k] * n0[k] / sigma2;
-          rhs          += eta[k] * n0[k] * ybar0[k] / sigma2;
-        }
-
-        real tau_eta2 = 1.0 / tau_eta_inv2;
-        real mu_eta   = tau_eta2 * rhs;
+        vector[2] m = npp_mu_tau(eta, n0, ybar0, sigma2, mu0, tau0_inv2, K);
+        real mu_eta       = m[1];
+        real tau_eta_inv2 = m[2];
 
         real tilde_tau_inv2 = tau_eta_inv2 + n / sigma2;
         tilde_tau2 = 1.0 / tilde_tau_inv2;
@@ -143,20 +145,9 @@ generated quantities {
 
       } else {
 
-        real tau_seq_inv2 = 0;
-        real rhs_seq      = 0;
-
-        for (k in 1:K) {
-          real tauk_inv2 = tau0_inv2 + eta[k] * n0[k] / sigma2;
-          real tauk2     = 1.0 / tauk_inv2;
-          real muk       = tauk2 * (mu0 * tau0_inv2 + eta[k] * n0[k] * ybar0[k] / sigma2);
-
-          tau_seq_inv2 += tauk_inv2;
-          rhs_seq      += muk / tauk2;
-        }
-
-        real tau_seq2 = 1.0 / tau_seq_inv2;
-        real mu_seq   = tau_seq2 * rhs_seq;
+        vector[3] m = seq_mu_tau(eta, n0, ybar0, sigma2, mu0, tau0_inv2, K);
+        real mu_seq       = m[1];
+        real tau_seq_inv2 = m[2];
 
         real tilde_tau_inv2 = tau_seq_inv2 + n / sigma2;
         tilde_tau2 = 1.0 / tilde_tau_inv2;
@@ -171,8 +162,8 @@ generated quantities {
         tilde_tau2 = tau02;
       }
     }
-  } 
+  }
 
   // posterior draw: theta | eta, D, D0 ~ N(tilde_mu, tilde_tau2)
   real theta = normal_rng(tilde_mu, sqrt(tilde_tau2));
-}
+}
