@@ -156,20 +156,17 @@ sample_sce_bin <- function(par_list, gamma_model, delta_model, sampler_args = li
 
   eta_draws <- .extract_draws(fits, "eta")
 
-  theta_draws <- list(
-    npp     = rbeta(nrow(eta_draws$npp),
-                     z + a + eta_draws$npp %*% z0,
-                     n - z + b + eta_draws$npp %*% (n0 - z0)),
-    nppseq  = rbeta(nrow(eta_draws$nppseq),
-                     z + K * (a - 1) + 1 + eta_draws$nppseq %*% z0,
-                     n - z + K * (b - 1) + 1 + eta_draws$nppseq %*% (n0 - z0)),
-    onpp    = rbeta(nrow(eta_draws$onpp),
-                     z + a + eta_draws$onpp %*% z0,
-                     n - z + b + eta_draws$onpp %*% (n0 - z0)),
-    onppseq = rbeta(nrow(eta_draws$onppseq),
-                     z + K * (a - 1) + 1 + eta_draws$onppseq %*% z0,
-                     n - z + K * (b - 1) + 1 + eta_draws$onppseq %*% (n0 - z0))
-  )
+  # FIX: theta is drawn directly from each Stan fit's generated quantities
+  # block, which already branches correctly on post (posterior vs.
+  # prior-only) and seq -- see eta_bin.stan / gamma_bin.stan. This used to
+  # be recomputed here in R with a formula that always folds in the current
+  # data (z, n), i.e. the post = 1 posterior-update formula, so a post = 0
+  # (prior-only) call silently got posterior-updated theta draws instead of
+  # prior-only ones. Mirrors the pattern already used in
+  # sample_sce_normal_fixed_var().
+  theta_draws <- lapply(fits, function(fit) {
+    fit$draws(variables = "theta") %>% as_draws_df() %>% pull(theta)
+  })
 
   .assemble_sce_result(fits, eta_draws, theta_draws)
 }

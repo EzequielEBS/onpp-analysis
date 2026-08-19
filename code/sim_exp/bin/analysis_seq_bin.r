@@ -70,12 +70,12 @@ sce1.3_unif <- list(n0 = c(100, 100, 100),
 # load sample
 n_cores <- 15
 n_sim <- 200
-sim1.1 <- sim_sce(model = "bin", n_cores,  n_sim, sce1.1_unif, gamma_model_bin, delta_model_bin)
-qs2::qs_save(sim1.1, file = "results/samples/bin/sim1_1_bin_unif.qs2")
-sim1.2 <- sim_sce(model = "bin", n_cores,  n_sim, sce1.2_unif, gamma_model_bin, delta_model_bin)
-qs2::qs_save(sim1.2, file = "results/samples/bin/sim1_2_bin_unif.qs2")
-sim1.3 <- sim_sce(model = "bin", n_cores,  n_sim, sce1.3_unif, gamma_model_bin, delta_model_bin)
-qs2::qs_save(sim1.3, file = "results/samples/bin/sim1_3_bin_unif.qs2")
+# sim1.1 <- sim_sce(model = "bin", n_cores,  n_sim, sce1.1_unif, gamma_model_bin, delta_model_bin)
+# qs2::qs_save(sim1.1, file = "results/samples/bin/sim1_1_bin_unif.qs2")
+# sim1.2 <- sim_sce(model = "bin", n_cores,  n_sim, sce1.2_unif, gamma_model_bin, delta_model_bin)
+# qs2::qs_save(sim1.2, file = "results/samples/bin/sim1_2_bin_unif.qs2")
+# sim1.3 <- sim_sce(model = "bin", n_cores,  n_sim, sce1.3_unif, gamma_model_bin, delta_model_bin)
+# qs2::qs_save(sim1.3, file = "results/samples/bin/sim1_3_bin_unif.qs2")
 
 # NOTE: sim1.1/1.2/1.3 already hold exactly what qs_save() just wrote --
 # immediately qs_read()-ing them back in was a pure round-trip through disk
@@ -83,9 +83,9 @@ qs2::qs_save(sim1.3, file = "results/samples/bin/sim1_3_bin_unif.qs2")
 # you want to skip re-running the (expensive) sim_sce() calls above on a
 # later run, comment them out and uncomment the three qs_read() calls below
 # instead of running both unconditionally.
-# sim1.1 <- qs2::qs_read("results/samples/bin/sim1_1_bin_unif.qs2")
-# sim1.2 <- qs2::qs_read("results/samples/bin/sim1_2_bin_unif.qs2")
-# sim1.3 <- qs2::qs_read("results/samples/bin/sim1_3_bin_unif.qs2")
+sim1.1 <- qs2::qs_read("results/samples/bin/sim1_1_bin_unif.qs2")
+sim1.2 <- qs2::qs_read("results/samples/bin/sim1_2_bin_unif.qs2")
+sim1.3 <- qs2::qs_read("results/samples/bin/sim1_3_bin_unif.qs2")
 
 sce1.1_unif$post <- 0
 sce1.2_unif$post <- 0
@@ -168,8 +168,8 @@ plot_theta_bin <- function(
   }
 
   plot_theta <- ggplot() +
-    geom_density(aes(x = draws_theta_nppseq, color = "SEQ"), size = 1) +
-    geom_density(aes(x = draws_theta_npp, color = "pi"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_theta_nppseq, color = "SEQ"), size = 1) +
+    geom_density(bounds = c(0, 1), aes(x = draws_theta_npp, color = "pi"), size = 1) +
     labs(x = expression(theta), y = y_lab) +
     geom_vline(xintercept = theta_true, linetype = "dashed", color = "black") +
     scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
