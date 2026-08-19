@@ -1,126 +1,178 @@
+functions {
+  // log Z for Normal up to constants: (1/2)*log(tau2) + (1/2)*mu^2/tau2
+  // (the 2*pi constant cancels in all ratios)
+  real log_Z_normal1d(real mu, real tau2) {
+    return 0.5 * log(tau2) + 0.5 * mu^2 / tau2;
+  }
+}
+
 data {
-  real mu0;  // Prior parameter for theta
-  real<lower=0> sigma0;  
-  int<lower=0> K; // number of historical datas
-  array[K] int n0; // Observed historical sample sizes
-  int<lower=0> n; // Current sample size
-  array[K] real<lower=0> sigmah; // Observed historical standard deviations
-  real<lower=0> sigma; // Observed current standard deviation
-  vector[sum(n0)] y0; // Observed historical data
-  vector[n] y; // Observed current data
-  array[K] int start_idx; // Starting index for each historical data in y0
-  real<lower=0> al;  // Prior parameters for eta
+  int<lower=1> K;
+  array[K] int<lower=0> n0;
+  array[K] real         ybar0;   // per-dataset sample means
+  int<lower=0>  n;
+  real          ybar;            // current data sample mean
+  real<lower=0> sigma2;          // known variance
+  real          mu0;             // prior mean
+  real<lower=0> tau02;           // prior variance
+  real<lower=0> al;
   real<lower=0> bl;
-  int<lower=0> seq; // 1 for sequential, 0 for non-sequential
+  int<lower=0, upper=1> post;
+  int<lower=0, upper=1> seq;
 }
 
 transformed data {
-  vector[K] n0l;
-  for (i in 1:K){
-    n0l[i] = n0[i];
-  }
-  vector[K] sigmahl;
-  for (i in 1:K){
-    sigmahl[i] = sigmah[i];
-  }
-  vector[K] sum_y0;
-  for (i in 1:K){
-    sum_y0[i] = sum(y0[start_idx[i]:(start_idx[i]+n0[i]-1)]);
-  }
+  real tau0_inv2 = 1.0 / tau02;
 }
 
 parameters {
-  array[K] real<lower=0, upper=1> delta; // discounting parameters for historical data
-}
-
-transformed parameters {
-  vector[K] deltal;
-  for (i in 1:K){
-    deltal[i] = delta[i];
-  }
+  vector<lower=0, upper=1>[K] eta;
 }
 
 model {
+  // ----- prior on eta -----
+  for (k in 1:K)
+    target += beta_lpdf(eta[k] | al, bl);
 
-  if (seq == 1) {
-    real v0;
-    real m0;
-    v0 = 0;
-    m0 = 0;
-    for (i in 1:K) {
-      real v0k;
-      real m0k;
-      v0k = (1/sigma0^2 + delta[i] * n0l[i] / sigmahl[i]^2)^(-1);
-      m0k = v0k * (mu0/sigma0^2 + delta[i] * sum_y0[i] / sigmahl[i]^2);
-      // target += normal_lpdf(theta | m0k, sqrt(v0k));
-      v0 += (1/v0k);
-      m0 += m0k / v0k;
-      // prior for delta
-      target += beta_lpdf(delta[i] | al, bl );
-      // constant
-      target += -0.5 * m0k^2 / v0k - 0.5 * log(v0k);
+  if (post == 1) {
+
+    if (seq == 0) {
+      // -------------------------------------------------------
+      // NPP
+      // -------------------------------------------------------
+
+      real tau_eta_inv2 = tau0_inv2;
+      real rhs          = mu0 * tau0_inv2;
+
+      for (k in 1:K) {
+        tau_eta_inv2 += eta[k] * n0[k] / sigma2;
+        rhs          += eta[k] * n0[k] * ybar0[k] / sigma2;
+      }
+
+      real tau_eta2 = 1.0 / tau_eta_inv2;
+      real mu_eta   = tau_eta2 * rhs;
+
+      // update with D
+      real tilde_tau_inv2 = tau_eta_inv2 + n / sigma2;
+      real tilde_tau2     = 1.0 / tilde_tau_inv2;
+      real tilde_mu       = tilde_tau2 * (tau_eta_inv2 * mu_eta + n * ybar / sigma2);
+
+      // log BF for D
+      target += log_Z_normal1d(tilde_mu, tilde_tau2)
+              - log_Z_normal1d(mu_eta, tau_eta2);
+
+    } else {
+      // -------------------------------------------------------
+      // NPP-SEQ
+      // -------------------------------------------------------
+
+      real tau_seq_inv2 = 0;
+      real rhs_seq      = 0;
+      real logZ_k_sum   = 0;
+
+      for (k in 1:K) {
+        real tauk_inv2 = tau0_inv2 + eta[k] * n0[k] / sigma2;
+        real tauk2     = 1.0 / tauk_inv2;
+        real muk       = tauk2 * (mu0 * tau0_inv2 + eta[k] * n0[k] * ybar0[k] / sigma2);
+
+        logZ_k_sum    += log_Z_normal1d(muk, tauk2);
+        tau_seq_inv2  += tauk_inv2;
+        rhs_seq       += muk / tauk2;
+      }
+
+      real tau_seq2 = 1.0 / tau_seq_inv2;
+      real mu_seq   = tau_seq2 * rhs_seq;
+
+      // update with D
+      real tilde_tau_inv2 = tau_seq_inv2 + n / sigma2;
+      real tilde_tau2     = 1.0 / tilde_tau_inv2;
+      real tilde_mu       = tilde_tau2 * (tau_seq_inv2 * mu_seq + n * ybar / sigma2);
+
+      // log BF for D
+      target += log_Z_normal1d(tilde_mu, tilde_tau2)
+              - logZ_k_sum;
     }
-    v0 = v0^(-1);
-    real v;
-    real m;
-    v = (1/v0 + n / sigma^2)^(-1);
-    m = v * (m0 + sum(y) / sigma^2);
-    // target += normal_lpdf(theta | m, sqrt(v));
-    // // constant
-    target += 0.5 * m^2 / v + 0.5 * log(v);
-    // target += normal_lpdf(y | theta, sigma);
   } else {
-    // non-sequential model
-    real v0;
-    real m0;
-    real v;
-    real m;
-    v0 = 1 / (1/sigma0^2 + sum(deltal .* n0l ./ sigmahl^2));
-    m0 = v0 * (mu0/sigma0^2 + sum(deltal .* sum_y0 ./ sigmahl));
-    // target += normal_lpdf(theta | m0, sqrt(v0));
-    // target += normal_lpdf(y | theta, sigma);
-    v = (1/v0 + n / sigma^2)^(-1);
-    m = v * (m0 / v0 + sum(y) / sigma^2);
-    // target += normal_lpdf(theta | m, sqrt(v));
-    target += -0.5 * m0^2 / v0 - 0.5 * log(v0);
-    target += 0.5 * m^2/v + 0.5 * log(v);
-    for (k in 1:K) {
-      // prior for delta
-      target += beta_lpdf(delta[k] | al, bl );
+    if (seq == 1) {
+      real tau_seq_inv2 = 0;
+      real rhs_seq      = 0;
+      real logZ_k_sum   = 0;
+
+      for (k in 1:K) {
+        real tauk_inv2 = tau0_inv2 + eta[k] * n0[k] / sigma2;
+        real tauk2     = 1.0 / tauk_inv2;
+        real muk       = tauk2 * (mu0 * tau0_inv2 + eta[k] * n0[k] * ybar0[k] / sigma2);
+
+        logZ_k_sum    += log_Z_normal1d(muk, tauk2);
+        tau_seq_inv2  += tauk_inv2;
+        rhs_seq       += muk / tauk2;
+      }
+
+      real tau_seq2 = 1.0 / tau_seq_inv2;
+      real mu_seq   = tau_seq2 * rhs_seq;
+
+      // log BF for D
+      target += log_Z_normal1d(mu_seq, tau_seq2)
+              - logZ_k_sum;
     }
   }
 }
 
 generated quantities {
-  real theta;
-  real v;
-  real m;
+  real tilde_mu;
+  real tilde_tau2;
 
-  if (seq == 1) {
-    real v0;
-    real m0;
-    v0 = 0;
-    m0 = 0;
-    for (i in 1:K) {
-      real v0k;
-      real m0k;
-      v0k = (1/sigma0^2 + delta[i] * n0l[i] / sigmahl[i]^2)^(-1);
-      m0k = v0k * (mu0/sigma0^2 + delta[i] * sum_y0[i] / sigmahl[i]^2);
-      v0 += (1/v0k);
-      m0 += m0k / v0k;
+  {
+    if (post == 1) {
+      if (seq == 0) {
+
+        real tau_eta_inv2 = tau0_inv2;
+        real rhs          = mu0 * tau0_inv2;
+
+        for (k in 1:K) {
+          tau_eta_inv2 += eta[k] * n0[k] / sigma2;
+          rhs          += eta[k] * n0[k] * ybar0[k] / sigma2;
+        }
+
+        real tau_eta2 = 1.0 / tau_eta_inv2;
+        real mu_eta   = tau_eta2 * rhs;
+
+        real tilde_tau_inv2 = tau_eta_inv2 + n / sigma2;
+        tilde_tau2 = 1.0 / tilde_tau_inv2;
+        tilde_mu   = tilde_tau2 * (tau_eta_inv2 * mu_eta + n * ybar / sigma2);
+
+      } else {
+
+        real tau_seq_inv2 = 0;
+        real rhs_seq      = 0;
+
+        for (k in 1:K) {
+          real tauk_inv2 = tau0_inv2 + eta[k] * n0[k] / sigma2;
+          real tauk2     = 1.0 / tauk_inv2;
+          real muk       = tauk2 * (mu0 * tau0_inv2 + eta[k] * n0[k] * ybar0[k] / sigma2);
+
+          tau_seq_inv2 += tauk_inv2;
+          rhs_seq      += muk / tauk2;
+        }
+
+        real tau_seq2 = 1.0 / tau_seq_inv2;
+        real mu_seq   = tau_seq2 * rhs_seq;
+
+        real tilde_tau_inv2 = tau_seq_inv2 + n / sigma2;
+        tilde_tau2 = 1.0 / tilde_tau_inv2;
+        tilde_mu   = tilde_tau2 * (tau_seq_inv2 * mu_seq + n * ybar / sigma2);
+      }
+    } else {
+      if (seq == 1) {
+        tilde_mu = mu0;
+        tilde_tau2 = tau02/K;
+      } else {
+        tilde_mu = mu0;
+        tilde_tau2 = tau02;
+      }
     }
-    v0 = v0^(-1);
-    v = (1/v0 + n / sigma^2)^(-1);
-    m = v * (m0 + sum(y) / sigma^2);
-  } else {
-    // non-sequential model
-    real v0;
-    real m0;
-    v0 = 1 / (1/sigma0^2 + sum(deltal .* n0l ./ sigmahl^2));
-    m0 = v0 * (mu0/sigma0^2 + sum(deltal .* sum_y0 ./ sigmahl));
-    v = (1/v0 + n / sigma^2)^(-1);
-    m = v * (m0 / v0 + sum(y) / sigma^2);
-  }
+  } 
 
-  theta = normal_rng(m, sqrt(v));
-}
+  // posterior draw: theta | eta, D, D0 ~ N(tilde_mu, tilde_tau2)
+  real theta = normal_rng(tilde_mu, sqrt(tilde_tau2));
+}

@@ -70,8 +70,8 @@ fit <- glm.onpp(
 source("code/glm_onpp.R")
 
 # Compile the model
-gamma_model_bin <- cmdstan_model("code/gamma_bin.stan")
-delta_model_bin <- cmdstan_model("code/delta_bin.stan")
+gamma_model_bin <- cmdstan_model("code/models/bin/gamma_bin.stan")
+delta_model_bin <- cmdstan_model("code/models/bin/delta_bin.stan")
 
 # Define the data
 n0 <- c(275, 287)

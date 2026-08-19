@@ -9,8 +9,8 @@ library(tidyverse)
 library(posterior)
 
 # Compile the model
-gamma_model_bin <- cmdstan_model("code/gamma_bin.stan")
-delta_model_bin <- cmdstan_model("code/delta_bin.stan")
+gamma_model_bin <- cmdstan_model("code/models/bin/gamma_bin.stan")
+delta_model_bin <- cmdstan_model("code/models/bin/delta_bin.stan")
 
 n0 <- c(359, 252, 693, 437)
 z0 <- c(279, 208, 598, 358)

@@ -48,7 +48,8 @@ data {
   real<lower=0> b;
   matrix[p,p] V0;
   vector[p] mu0;
-  vector[K+1] alpha;
+  real<lower=0> al;
+  real<lower=0> bl;
   int<lower=0, upper=1> post;
   int<lower=0, upper=1> seq;
 }
@@ -58,20 +59,13 @@ transformed data {
 }
 
 parameters {
-  array[K+1] real<lower=0> raw_gamma; // raw parameters for gamma
-}
-
-transformed parameters {
-  simplex[K+1] gamma;
-  for (i in 1:(K+1)){
-    gamma[i] = raw_gamma[i] / sum(raw_gamma);
-  }
-  vector[K] eta = cumulative_sum(gamma[1:K]);
+  vector<lower=0, upper=1>[K] eta;
 }
 
 model {
   // ----- prior on eta -----
-  target += gamma_lpdf(raw_gamma | alpha, 1);
+  for (k in 1:K)
+    target += beta_lpdf(eta[k] | al, bl);
 
   if (post == 1) {
 
