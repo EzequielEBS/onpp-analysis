@@ -130,7 +130,7 @@ plot_theta_normal <- function(
   ordered = F,
   post = F,
   theta_true = 5, 
-  # c = c(3, 3), 
+  c_band = c(1, 1), 
   title = NULL,
   leg = T
 ) {
@@ -156,8 +156,8 @@ plot_theta_normal <- function(
                         labels = c("SEQ" = "SEQ",
                                     "pi" = "Default")) +
     scale_y_continuous(labels = function(x) format(round(x, 1), nsmall = 1)) +
-    scale_x_continuous(labels = function(x) format(round(x, 1), nsmall = 1)
-                        # limits = c(theta_true[1] - c[1], theta_true[1] + c[1])
+    scale_x_continuous(labels = function(x) format(round(x, 1), nsmall = 1),
+                        limits = c(theta_true[1] - c_band[1], theta_true[1] + c_band[2])
                       ) +
     theme_minimal() +
     ggtitle(
@@ -248,12 +248,14 @@ plots_npp_sce <- lapply(1:3, function(i) {
     .(sce_name)~theta[0] == .(df_sce$Theta0[i])~", Order:"~.(df_sce$Order[i])~", Discrepancy:"~.(df_sce$Discrepancy[i])
   )
   if (i != 3){
-    plot_theta_prior <- plot_theta_normal(samples$theta_prior, title = title, leg = F)
+    plot_theta_prior <- plot_theta_normal(samples$theta_prior, title = title, leg = F, 
+      c_band = c(9,0))
     plot_eta_prior <- plot_eta_normal(samples$eta_prior, title = title, leg = F)
     plot_theta_post <- plot_theta_normal(samples$theta_post, post = T, leg = F)
     plot_eta_post <- plot_eta_normal(samples$eta_post, post = T, leg = F)
   } else {
-    plot_theta_prior <- plot_theta_normal(samples$theta_prior, title = title, leg = F)
+    plot_theta_prior <- plot_theta_normal(samples$theta_prior, title = title, leg = F,
+      c_band = c(9,0))
     plot_eta_prior <- plot_eta_normal(samples$eta_prior, title = title, leg = F)
     plot_theta_post <- plot_theta_normal(samples$theta_post, post = T,leg = T)
     plot_eta_post <- plot_eta_normal(samples$eta_post, post = T, leg = T)

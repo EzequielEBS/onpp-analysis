@@ -88,6 +88,46 @@ coverages_90 <- summary_bin$coverages_90
 coverages_80 <- summary_bin$coverages_80
 coverages_50 <- summary_bin$coverages_50
 
+# ------------------------------------------------------------------------------
+# Scientific-notation helper for the MSE/WIS summary tables
+# ------------------------------------------------------------------------------
+# Rather than formatting every cell in scientific notation (e.g. "1.23e-03"),
+# each table is shown on a single common power-of-10 scale: all its values
+# are multiplied by 10^exponent so they land near order 1, and the exponent
+# is reported once in the table title (e.g. "Average MSE (\u00d710\u207b\u00b3)")
+# so it can be echoed in the title or an Overleaf figure legend instead of
+# cluttering every cell.
+.superscript_digits <- c(
+  "0" = "\u2070", "1" = "\u00B9", "2" = "\u00B2", "3" = "\u00B3", "4" = "\u2074",
+  "5" = "\u2075", "6" = "\u2076", "7" = "\u2077", "8" = "\u2078", "9" = "\u2079"
+)
+
+to_superscript <- function(n) {
+  neg <- n < 0
+  digits <- strsplit(as.character(abs(n)), "")[[1]]
+  s <- paste(.superscript_digits[digits], collapse = "")
+  if (neg) paste0("\u207B", s) else s
+}
+
+# Exponent k such that multiplying x by 10^k brings its median magnitude
+# close to order 1 (e.g. x ~ 1e-3 -> k = 3).
+compute_common_scale <- function(x) {
+  x <- x[is.finite(x) & x != 0]
+  if (length(x) == 0) return(0L)
+  round(-floor(log10(median(abs(x)))))
+}
+
+# Multiply `cols` of `df` by a common power of 10 and return the scaled
+# data frame together with a " (\u00d710^-k)" label for the table title --
+# the exponent shown is the one needed to recover the *original* values
+# from the displayed (scaled) ones.
+add_common_scale <- function(df, cols) {
+  exponent <- compute_common_scale(unlist(df[cols]))
+  df[cols] <- lapply(df[cols], function(col) col * 10^exponent)
+  label <- if (exponent == 0) "" else paste0(" (\u00d710", to_superscript(-exponent), ")")
+  list(df = df, exponent = exponent, label = label)
+}
+
 df_mse_theta <- data.frame(
   # Regime = c(rep("n[0] > n", 12), rep("n[0] < n", 12)),
   Theta0 = c(
@@ -129,6 +169,9 @@ df_mse_theta <- data.frame(
 
 # df_mse_beta$Regime <- ifelse(df_mse_beta$Regime == "n[0] > n", "n\u2080 > n", "n\u2080 < n")
 
+mse_scale <- add_common_scale(df_mse_theta, c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ"))
+df_mse_theta <- mse_scale$df
+
 table_mse_theta <- df_mse_theta |>
   gt(groupname_col = "Order") |>
   cols_label(
@@ -151,7 +194,7 @@ table_mse_theta <- df_mse_theta |>
   tab_header(
     # title    = "Average MSE by scenario and method",
     # subtitle = "Varying \u03B2",
-    title = "Average MSE"
+    title = paste0("Average MSE", mse_scale$label)
   ) |>
   tab_spanner(
     label   = "Method",
@@ -219,6 +262,9 @@ df_wis_theta <- data.frame(
     lapply(summary_bin$wis_list, function(x) x$hat_wis_onppseq[1]) %>% unlist()
   )
 )
+wis_scale <- add_common_scale(df_wis_theta, c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ"))
+df_wis_theta <- wis_scale$df
+
 table_wis_theta <- df_wis_theta |>
   gt(groupname_col = "Order") |>
   cols_label(
@@ -239,7 +285,7 @@ table_wis_theta <- df_wis_theta |>
     decimals = 3
   ) |>
   tab_header(
-    title    = "Average WIS"
+    title    = paste0("Average WIS", wis_scale$label)
   ) |>
   tab_spanner(
     label   = "Method",
@@ -553,4 +599,4 @@ plots_eta_post_canc_eff2_default <- plot_eta_post(sim_sces[[14]], 1)
 plots_eta_post_canc_eff2_seq <- plot_eta_post(sim_sces[[14]], 1, seq_norm = T)
 plots_eta_post_canc_eff2 <- plots_eta_post_canc_eff2_default / plots_eta_post_canc_eff2_seq
 ggsave("results/figures/bin/post_eta_canc_eff2_bin.png",
-       plots_eta_post_canc_eff2, width = 10, height = 6, dpi = 300)
+       plots_eta_post_canc_eff2, width = 10, height = 6, dpi = 300)

@@ -149,8 +149,8 @@ plot_theta_bin <- function(
   draws, 
   ordered = F,
   post = F,
-  theta_true = .5, 
-  # c = c(3, 3), 
+  theta_true = .5,
+  c_band = c(0.5, 0.5),
   title = NULL,
   leg = T
 ) {
@@ -176,8 +176,8 @@ plot_theta_bin <- function(
                         labels = c("SEQ" = "SEQ",
                                     "pi" = "Default")) +
     scale_y_continuous(labels = function(x) format(round(x, 1), nsmall = 1)) +
-    scale_x_continuous(labels = function(x) format(round(x, 1), nsmall = 1)
-                        # limits = c(theta_true[1] - c[1], theta_true[1] + c[1])
+    scale_x_continuous(labels = function(x) format(round(x, 1), nsmall = 1),
+                        limits = c(theta_true[1] - c_band[1], theta_true[1] + c_band[1])
                       ) +
     theme_minimal() +
     ggtitle(
@@ -270,12 +270,14 @@ plots_npp_sce <- lapply(1:3, function(i) {
   if (i != 3){
     plot_theta_prior <- plot_theta_bin(samples$theta_prior, title = title, leg = F)
     plot_eta_prior <- plot_eta_bin(samples$eta_prior, title = title, leg = F)
-    plot_theta_post <- plot_theta_bin(samples$theta_post, post = T, leg = F)
+    plot_theta_post <- plot_theta_bin(samples$theta_post, post = T, leg = F, 
+      c_band = c(0.2, 0.2))
     plot_eta_post <- plot_eta_bin(samples$eta_post, post = T, leg = F)
   } else {
     plot_theta_prior <- plot_theta_bin(samples$theta_prior, title = title, leg = F)
     plot_eta_prior <- plot_eta_bin(samples$eta_prior, title = title, leg = F)
-    plot_theta_post <- plot_theta_bin(samples$theta_post, post = T, leg = T)
+    plot_theta_post <- plot_theta_bin(samples$theta_post, post = T, leg = T,
+      c_band = c(0.2, 0.2))
     plot_eta_post <- plot_eta_bin(samples$eta_post, post = T, leg = T)
   }
   

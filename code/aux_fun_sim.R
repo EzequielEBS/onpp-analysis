@@ -1376,3 +1376,240 @@ plot_eta_post <- function(samples, sim, seq_norm = F){
     plot_layout(guides = "collect")
   return(combined_plots)
 }
+
+# =============================================================================
+# General, family-agnostic density plot for a single (scenario, replicate)
+# =============================================================================
+#
+# All four families -- bin, poi, normal (normal_fixed_var), lm -- funnel
+# through .assemble_sce_result() and sim_sce() into the exact same shape for
+# a single scenario's simulation object `sim`:
+#
+#   sim$delta[[replicate]]$delta_npp / delta_nppseq / delta_onpp / delta_onppseq
+#   sim$theta[[replicate]]$theta_npp / theta_nppseq / theta_onpp / theta_onppseq
+#
+# so this function works unchanged across families: `family` is used only
+# for axis bounds/labels, never to decide how the data is read. The one real
+# structural difference -- theta being a single vector of draws (bin/poi/
+# normal, where theta is a scalar parameter) vs. a matrix (lm, one column
+# per beta + sigma) -- is detected automatically with is.matrix(), not
+# hardcoded per family.
+#
+# Arguments:
+#   sim            one scenario's simulation object, e.g. sim_sces[[7]] for
+#                   bin/normal, or sim_sces_beta_n0_ge_n[[2]] for lm -- i.e.
+#                   whatever list of scenarios that family's analysis script
+#                   already loads. Pass the *scenario*, not the whole list.
+#   replicate      integer index into sim$delta / sim$theta picking which
+#                   simulated replicate to plot (1..num_sim)
+#   family         one of "bin", "poi", "normal", "lm" -- only affects
+#                   default axis bounds/labels, see above
+#   true_theta     optional true theta value(s) -- a single number for
+#                   bin/poi/normal, or a vector matching the columns of
+#                   theta (e.g. c(betastar, sgstar) for lm)
+#   theta_labels   optional list of expressions naming each theta component;
+#                   defaults to expression(theta) when theta is univariate,
+#                   or beta[1], beta[2], ..., sigma when it's a matrix (lm)
+#   scenario_label optional string (e.g. "Scenario III.II") shown in the title
+#
+# Returns a single patchwork object: one eta density panel per method
+# (NPP / NPP-SEQ / ONPP / ONPP-SEQ) on top, theta density panel(s) below --
+# for lm, one theta panel per beta/sigma component, each overlaying the four
+# methods; for bin/poi/normal, a single panel overlaying the four methods,
+# same as plot_sim_theta().
+#
+# Examples:
+#   # bin, scenario III.II (7th element), replicate 3:
+#   plot_eta_theta_density(sim_sces[[7]], replicate = 3, family = "bin",
+#                           true_theta = 0.5,
+#                           scenario_label = "Scenario III.II")
+#
+#   # lm, "varying beta", n0 >= n, scenario 2, replicate 10:
+#   plot_eta_theta_density(sim_sces_beta_n0_ge_n[[2]], replicate = 10,
+#                           family = "lm", true_theta = c(betastar, sgstar))
+plot_eta_theta_density <- function(sim, replicate,
+                                    family = c("bin", "poi", "normal", "lm"),
+                                    true_theta = NULL,
+                                    theta_labels = NULL, scenario_label = NULL) {
+  family <- match.arg(family)
+  methods <- c("npp", "nppseq", "onpp", "onppseq")
+  method_titles <- c(npp = "NPP", nppseq = "NPP-SEQ", onpp = "ONPP", onppseq = "ONPP-SEQ")
+
+  if (is.null(sim$delta) || is.null(sim$theta)) {
+    stop("`sim` doesn't look like a single scenario's simulation object -- ",
+         "it has no $delta/$theta. Did you pass the whole sim_sces list ",
+         "instead of one element of it (e.g. sim_sces[[sce]])?")
+  }
+  if (replicate < 1 || replicate > length(sim$delta)) {
+    stop("replicate ", replicate, " out of range 1:", length(sim$delta))
+  }
+
+  eta_rec <- sim$delta[[replicate]]
+  theta_rec <- sim$theta[[replicate]]
+
+  # ---- eta density panels: one per method, all eta components overlaid ----
+  n_eta <- ncol(eta_rec$delta_npp)
+  eta_pal <- RColorBrewer::brewer.pal(max(3, n_eta), "Set1")[seq_len(n_eta)]
+  eta_key <- paste0("eta", seq_len(n_eta))
+  eta_expr <- lapply(seq_len(n_eta), function(i) bquote(eta[.(i)]))
+
+  eta_plots <- lapply(methods, function(m) {
+    draws <- eta_rec[[paste0("delta_", m)]]
+    df <- do.call(rbind, lapply(seq_len(n_eta), function(i) {
+      # as.numeric() strips the posterior package's draws_matrix class --
+      # draws[, i] otherwise stays a 1-column draws_matrix (its `[` method
+      # doesn't drop dimensions), which carries its own as.data.frame()
+      # method that names the column after the Stan variable (e.g.
+      # "eta[1]") instead of "value". With three components pulled from
+      # possibly different draws_matrix objects, that produced three
+      # differently-named single-column data.frames and rbind() failed
+      # with "names do not match previous names".
+      data.frame(value = as.numeric(draws[, i]), component = eta_key[i])
+    }))
+    p <- ggplot(df) +
+      geom_density(bounds = c(0, 1), aes(x = value, color = component), linewidth = 0.8) +
+      scale_color_manual(name = NULL,
+                         values = setNames(eta_pal, eta_key),
+                         labels = eta_expr) +
+      labs(x = expression(eta), y = NULL) +
+      ggtitle(method_titles[[m]])
+    p
+  })
+  eta_combined <- wrap_plots(eta_plots, ncol = length(eta_plots)) +
+    plot_layout(guides = "collect")
+
+  # ---- theta density panel(s) ----------------------------------------------
+  is_multivariate_theta <- is.matrix(theta_rec$theta_npp)
+  n_theta <- if (is_multivariate_theta) ncol(theta_rec$theta_npp) else 1
+
+  if (is.null(theta_labels)) {
+    theta_labels <- if (!is_multivariate_theta) {
+      list(expression(theta))
+    } else {
+      c(lapply(seq_len(n_theta - 1), function(i) bquote(beta[.(i)])),
+        list(expression(sigma)))
+    }
+  }
+
+  method_pal <- setNames(RColorBrewer::brewer.pal(4, "Set1"), unname(method_titles))
+
+  theta_plots <- lapply(seq_len(n_theta), function(j) {
+    df <- do.call(rbind, lapply(methods, function(m) {
+      draws <- theta_rec[[paste0("theta_", m)]]
+      # Same as.numeric() fix as the eta loop above, for the same reason.
+      vals <- if (is_multivariate_theta) as.numeric(draws[, j]) else as.numeric(draws)
+      data.frame(value = vals, method = method_titles[[m]])
+    }))
+    p <- ggplot(df) +
+      geom_density(aes(x = value, color = method), linewidth = 0.8) +
+      scale_color_manual(name = NULL, values = method_pal) +
+      labs(x = theta_labels[[j]], y = NULL)
+    if (family == "bin") p <- p + xlim(0, 1)  # theta is a probability only for bin
+    if (!is.null(true_theta)) {
+      true_theta_j <- if (is_multivariate_theta) true_theta[j] else true_theta[1]
+      p <- p + geom_vline(xintercept = true_theta_j, linetype = "dotted",
+                          color = "black", linewidth = 0.6)
+    }
+    p
+  })
+  theta_combined <- wrap_plots(theta_plots, ncol = n_theta) +
+    plot_layout(guides = "collect")
+
+  title <- paste0(
+    if (!is.null(scenario_label)) paste0(scenario_label, " — ") else "",
+    "Replicate ", replicate, " (", toupper(family), ")"
+  )
+
+  (eta_combined / theta_combined) +
+    plot_annotation(title = title)
+}
+
+# =============================================================================
+# General, family-agnostic boxplot of hat-eta / hat-theta across replicates
+# =============================================================================
+#
+# Companion to plot_eta_theta_density(): that one shows the full posterior
+# densities for a single replicate; this one shows -- averaged across every
+# replicate in `sim` -- how hat(eta) and hat(theta) (the per-replicate
+# posterior means, sim$hatdelta / sim$hattheta) are distributed for each
+# method, i.e. "what happens on average". plot_sce_bin()/plot_sce_lm()
+# already did this per-family; this version detects the family's structure
+# automatically instead of hardcoding it, and reuses the existing
+# plot_boxplot() helper -- which assumes the same column order sim_sce()
+# always builds: hatdelta_npp/nppseq/onpp/onppseq, hattheta_npp/nppseq/
+# onpp/onppseq (columns 1..4 = NPP, NPP-SEQ, ONPP, ONPP-SEQ).
+#
+# Arguments:
+#   sim            one scenario's simulation object (same as
+#                   plot_eta_theta_density(), e.g. sim_sces[[7]] for
+#                   bin/normal, or sim_sces_beta_n0_ge_n[[2]] for lm)
+#   family         one of "bin", "poi", "normal", "lm" -- only affects the
+#                   title and how many true_theta reference lines to expect
+#   true_theta     optional true theta value(s) to draw as a dotted
+#                   reference line -- a single number for bin/poi/normal, or
+#                   a vector matching hattheta's components for lm (e.g.
+#                   c(betastar, sgstar))
+#   scenario_label optional string (e.g. "Scenario III.II") shown in the title
+#
+# Returns a single patchwork object: one eta boxplot panel per component
+# (hat(eta)[1], hat(eta)[2], ...) on top, theta boxplot panel(s) below --
+# one per beta/sigma component for lm, a single panel otherwise -- each
+# panel showing one box per method.
+#
+# Examples:
+#   plot_eta_theta_boxplot(sim_sces[[7]], family = "bin", true_theta = 0.5,
+#                           scenario_label = "Scenario III.II")
+#   plot_eta_theta_boxplot(sim_sces_beta_n0_ge_n[[2]], family = "lm",
+#                           true_theta = c(betastar, sgstar))
+plot_eta_theta_boxplot <- function(sim, family = c("bin", "poi", "normal", "lm"),
+                                    true_theta = NULL, scenario_label = NULL) {
+  family <- match.arg(family)
+
+  if (is.null(sim$hatdelta) || is.null(sim$hattheta)) {
+    stop("`sim` doesn't look like a single scenario's simulation object -- ",
+         "it has no $hatdelta/$hattheta. Did you pass the whole sim_sces ",
+         "list instead of one element of it (e.g. sim_sces[[sce]])?")
+  }
+
+  # ---- eta boxplot panels: one per component -------------------------------
+  n_eta <- length(sim$hatdelta)
+  eta_plots <- lapply(seq_len(n_eta), function(i) {
+    plot_boxplot(sim$hatdelta[[i]], bquote(hat(eta)[.(i)])) + coord_flip()
+  })
+  eta_combined <- wrap_plots(eta_plots, ncol = n_eta)
+
+  # ---- theta boxplot panel(s) -----------------------------------------------
+  # sim$hattheta is a single data.frame for bin/poi/normal (theta is a
+  # scalar parameter) or a list of data.frames for lm (one per beta/sigma) --
+  # detected here rather than hardcoded per family, same as
+  # plot_eta_theta_density()'s is.matrix() check on the raw draws.
+  is_multivariate_theta <- is.list(sim$hattheta) && !is.data.frame(sim$hattheta)
+  n_theta <- if (is_multivariate_theta) length(sim$hattheta) else 1
+
+  theta_labels <- if (!is_multivariate_theta) {
+    list(expression(hat(theta)))
+  } else {
+    c(lapply(seq_len(n_theta - 1), function(i) bquote(hat(beta)[.(i)])),
+      list(expression(hat(sigma))))
+  }
+
+  theta_plots <- lapply(seq_len(n_theta), function(j) {
+    draws <- if (is_multivariate_theta) sim$hattheta[[j]] else sim$hattheta
+    p <- plot_boxplot(draws, theta_labels[[j]]) + coord_flip()
+    if (!is.null(true_theta)) {
+      true_theta_j <- if (is_multivariate_theta) true_theta[j] else true_theta[1]
+      p <- p + geom_hline(yintercept = true_theta_j, linetype = "dotted",
+                          color = "red", linewidth = 0.6)
+    }
+    p
+  })
+  theta_combined <- wrap_plots(theta_plots, ncol = n_theta)
+
+  title <- paste0(
+    if (!is.null(scenario_label)) paste0(scenario_label, " — ") else "",
+    "Average over replicates (", toupper(family), ")"
+  )
+
+  (eta_combined / theta_combined) +
+    plot_annotation(title = title)
+}
