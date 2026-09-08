@@ -39,7 +39,7 @@ source("code/sim_exp/bin/scenarios_bin.R")
 
 # run simulations
 n_cores <- 15
-n_sim <- 200
+n_sim <- 2000
 
 # Reproducibility: every scenario gets its own fixed seed (derived from its
 # position in `scenarios`) so re-running this script reproduces the same
