@@ -38,8 +38,8 @@ delta_model_bin <- cmdstan_model("code/models/bin/eta_bin.stan")
 source("code/sim_exp/bin/scenarios_bin.R")
 
 # run simulations
-n_cores <- 15
-n_sim <- 2000
+n_cores <- detectCores()-1
+n_sim <- 1000
 
 # Reproducibility: every scenario gets its own fixed seed (derived from its
 # position in `scenarios`) so re-running this script reproduces the same
@@ -63,11 +63,11 @@ for (i in seq_along(scenarios)) {
 # Prior-only draws (post = 0) for the three "all flat" scenario III specs
 #-------------------------------------------------------------------------------
 
-for (id in names(sce3_theta0)) {
-  key <- paste0(id, "_all_flat")
-  file <- paste0("results/samples/bin/samples_prior_sce", id, "_all_flat.qs2")
-  message("sample_sce_bin (prior only): ", key, " -> ", file)
-  set.seed(base_seed + which(names(scenarios) == key))
-  samples_prior <- sample_sce_bin(c(scenarios[[key]], post = 0), gamma_model_bin, delta_model_bin)
-  qs2::qs_save(samples_prior, file = file)
-}
+# for (id in names(sce3_theta0)) {
+#   key <- paste0(id, "_all_flat")
+#   file <- paste0("results/samples/bin/samples_prior_sce", id, "_all_flat.qs2")
+#   message("sample_sce_bin (prior only): ", key, " -> ", file)
+#   set.seed(base_seed + which(names(scenarios) == key))
+#   samples_prior <- sample_sce_bin(c(scenarios[[key]], post = 0), gamma_model_bin, delta_model_bin)
+#   qs2::qs_save(samples_prior, file = file)
+# }
