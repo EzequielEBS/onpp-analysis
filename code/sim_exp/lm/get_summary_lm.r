@@ -11,12 +11,12 @@ get_summary_lm <- function(sim_sces, true_value) {
   # `sim$hattheta` are always the regression coefficients and the last is
   # sigma (see analysis_lm.R, `true_value = c(betastar, sgstar)`).
   #
-  # Norms instead of MSE: for beta this is the per-replicate Euclidean norm
-  # of the 3-dimensional error vector (hat_beta - beta*), averaged over
-  # replicates -- not sqrt(MSE), which would average the squared norms
-  # first and only then take a single sqrt. For sigma (a scalar) the norm
-  # is just the mean absolute error, the 1-dimensional analogue.
-  norms <- lapply(sim_sces, function(sim) {
+  # MSE instead of norm: for beta (3 coefficients) this is the per-component
+  # mean squared error, averaged over the 3 coefficients (not the
+  # Euclidean norm of the error vector); for sigma (a scalar) it's just
+  # the mean squared error of that one component, the 1-dimensional
+  # analogue.
+  mses <- lapply(sim_sces, function(sim) {
     n_params <- length(sim$hattheta)
     beta_idx  <- seq_len(n_params - 1)
     sigma_idx <- n_params
@@ -25,11 +25,10 @@ get_summary_lm <- function(sim_sces, true_value) {
       as.matrix(sim$hattheta[[i]]) - true_value[i]
     })
 
-    sq_errors_beta <- Reduce(`+`, lapply(errors[beta_idx], function(e) e^2))
-    norm_beta  <- colMeans(sqrt(sq_errors_beta))
-    norm_sigma <- colMeans(abs(errors[[sigma_idx]]))
+    mse_beta  <- Reduce(`+`, lapply(errors[beta_idx], function(e) colMeans(e^2))) / length(beta_idx)
+    mse_sigma <- colMeans(errors[[sigma_idx]]^2)
 
-    list(norm_beta = norm_beta, norm_sigma = norm_sigma)
+    list(mse_beta = mse_beta, mse_sigma = mse_sigma)
   })
 
   biass <- lapply(sim_sces, function(sim) {
@@ -60,8 +59,8 @@ get_summary_lm <- function(sim_sces, true_value) {
                                                         rep(sce,4)
                                                       })),
                               model = rep(c("NPP", "NPP-SEQ", "ONPP", "ONPP-SEQ"),length(sim_sces)),
-                              Norm_beta = unlist(lapply(norms, function(x) x$norm_beta)),
-                              Norm_sigma = unlist(lapply(norms, function(x) x$norm_sigma)),
+                              MSE_beta = unlist(lapply(mses, function(x) x$mse_beta)),
+                              MSE_sigma = unlist(lapply(mses, function(x) x$mse_sigma)),
                               bias_beta1 = unlist(lapply(biass, function(x) x[1,])),
                               bias_beta2 = unlist(lapply(biass, function(x) x[2,])),
                               bias_beta3 = unlist(lapply(biass, function(x) x[3,])),
@@ -80,8 +79,8 @@ get_summary_lm <- function(sim_sces, true_value) {
 
   print(xtable::xtable(summary_table %>%
                         mutate(
-                          Norm_beta = formatC(Norm_beta, format = "f", digits = 3),
-                          Norm_sigma = formatC(Norm_sigma, format = "f", digits = 3),
+                          MSE_beta = formatC(MSE_beta, format = "f", digits = 3),
+                          MSE_sigma = formatC(MSE_sigma, format = "f", digits = 3),
                           bias_beta1 = formatC(bias_beta1, format = "f", digits = 3),
                           bias_beta2 = formatC(bias_beta2, format = "f", digits = 3),
                           bias_beta3 = formatC(bias_beta3, format = "f", digits = 3),
@@ -91,5 +90,5 @@ get_summary_lm <- function(sim_sces, true_value) {
                         )
   ),
   type = "latex", include.rownames = FALSE)
-  return(list(summary_table = summary_table, norms = norms, biass = biass, wis_list = wis_list))
+  return(list(summary_table = summary_table, mses = mses, biass = biass, wis_list = wis_list))
 }

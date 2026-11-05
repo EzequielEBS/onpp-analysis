@@ -79,7 +79,7 @@ prepare_data_stan <- function(data) {
 # results reflect Order I data, not the intended reordered arms, and should
 # be regenerated.
 
-lm_default_par <- list(p = 3, a = 2, b = 1, V0 = diag(3), mu0 = rep(0, 3),
+lm_default_par <- list(p = 3, a = 2, b = 1, V0 = 100*diag(3), mu0 = rep(0, 3),
                         al = 1, bl = 1, alpha = rep(1, 4))
 
 # Swaps two historical-arm data_id labels in place (e.g. "hist_2"/"hist_3"),

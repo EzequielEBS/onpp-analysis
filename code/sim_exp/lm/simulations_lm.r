@@ -44,6 +44,11 @@ base_seed <- 20240521
 run_lm_scenarios <- function(suffix, n_cores, n_sim, seed_offset = 0) {
   for (order_i in 1:4) {
     for (cong_j in 1:3) {
+      if (order_i != 4) {
+        next
+      } else if (order_i == 4 & cong_j != 3) {
+        next
+      }
       order_roman <- as.character(as.roman(order_i))
       cong_roman  <- as.character(as.roman(cong_j))
       sce_file <- sprintf("results/sim_data/lm/sce%s_%s_%s.qs2", order_roman, cong_roman, suffix)
@@ -61,16 +66,16 @@ run_lm_scenarios <- function(suffix, n_cores, n_sim, seed_offset = 0) {
 # varying beta, n0 > n -- small size (Order I only: high vs no congruence)
 #------------------------------------------------------------------------------
 
-sce1.1 <- qs_read("results/sim_data/lm/sceI_I_varying_beta_n0_ge_n_small_size.qs2")
-sce1.3 <- qs_read("results/sim_data/lm/sceI_III_varying_beta_n0_ge_n_small_size.qs2")
-sim1.1 <- sim_sce(model = "lm", n_cores, n_sim, sce1.1, gamma_model_lm, delta_model_lm, seed = base_seed)
-qs_save(sim1.1,
-  file = "results/samples/lm/sim1_1_lm_varying_beta_n0_ge_n_small_size.qs2"
-)
-sim1.3 <- sim_sce(model = "lm", n_cores, n_sim, sce1.3, gamma_model_lm, delta_model_lm, seed = base_seed + 1)
-qs_save(sim1.3,
-  file = "results/samples/lm/sim1_3_lm_varying_beta_n0_ge_n_small_size.qs2"
-)
+# sce1.1 <- qs_read("results/sim_data/lm/sceI_I_varying_beta_n0_ge_n_small_size.qs2")
+# sce1.3 <- qs_read("results/sim_data/lm/sceI_III_varying_beta_n0_ge_n_small_size.qs2")
+# sim1.1 <- sim_sce(model = "lm", n_cores, n_sim, sce1.1, gamma_model_lm, delta_model_lm, seed = base_seed)
+# qs_save(sim1.1,
+#   file = "results/samples/lm/sim1_1_lm_varying_beta_n0_ge_n_small_size.qs2"
+# )
+# sim1.3 <- sim_sce(model = "lm", n_cores, n_sim, sce1.3, gamma_model_lm, delta_model_lm, seed = base_seed + 1)
+# qs_save(sim1.3,
+#   file = "results/samples/lm/sim1_3_lm_varying_beta_n0_ge_n_small_size.qs2"
+# )
 
 #------------------------------------------------------------------------------
 # varying beta, n0 > n

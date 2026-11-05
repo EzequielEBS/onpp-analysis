@@ -62,6 +62,47 @@ coverages_90 <- summary_normal$coverages_90
 coverages_80 <- summary_normal$coverages_80
 coverages_50 <- summary_normal$coverages_50
 
+
+# ------------------------------------------------------------------------------
+# Scientific-notation helper for the MSE/WIS summary tables
+# ------------------------------------------------------------------------------
+# Rather than formatting every cell in scientific notation (e.g. "1.23e-03"),
+# each table is shown on a single common power-of-10 scale: all its values
+# are multiplied by 10^exponent so they land near order 1, and the exponent
+# is reported once in the table title (e.g. "Average MSE (×10⁻³)")
+# so it can be echoed in the title or an Overleaf figure legend instead of
+# cluttering every cell.
+.superscript_digits <- c(
+  "0" = "⁰", "1" = "¹", "2" = "²", "3" = "³", "4" = "⁴",
+  "5" = "⁵", "6" = "⁶", "7" = "⁷", "8" = "⁸", "9" = "⁹"
+)
+
+to_superscript <- function(n) {
+  neg <- n < 0
+  digits <- strsplit(as.character(abs(n)), "")[[1]]
+  s <- paste(.superscript_digits[digits], collapse = "")
+  if (neg) paste0("⁻", s) else s
+}
+
+# Exponent k such that multiplying x by 10^k brings its median magnitude
+# close to order 1 (e.g. x ~ 1e-3 -> k = 3).
+compute_common_scale <- function(x) {
+  x <- x[is.finite(x) & x != 0]
+  if (length(x) == 0) return(0L)
+  round(-floor(log10(median(abs(x)))))
+}
+
+# Multiply `cols` of `df` by a common power of 10 and return the scaled
+# data frame together with a " (×10^-k)" label for the table title --
+# the exponent shown is the one needed to recover the *original* values
+# from the displayed (scaled) ones.
+add_common_scale <- function(df, cols) {
+  exponent <- compute_common_scale(unlist(df[cols]))
+  df[cols] <- lapply(df[cols], function(col) col * 10^exponent)
+  label <- if (exponent == 0) "" else paste0(" (×10", to_superscript(-exponent), ")")
+  list(df = df, exponent = exponent, label = label)
+}
+
 df_mse_theta <- data.frame(
   # Regime = c(rep("n[0] > n", 12), rep("n[0] < n", 12)),
   Theta0 = c(
@@ -103,6 +144,9 @@ df_mse_theta <- data.frame(
 
 # df_mse_beta$Regime <- ifelse(df_mse_beta$Regime == "n[0] > n", "n\u2080 > n", "n\u2080 < n")
 
+mse_scale <- add_common_scale(df_mse_theta, c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ"))
+df_mse_theta <- mse_scale$df
+
 table_mse_theta <- df_mse_theta |>
   gt(groupname_col = "Order") |>
   cols_label(
@@ -113,11 +157,6 @@ table_mse_theta <- df_mse_theta |>
     ONPP        = "ONPP",
     ONPP_SEQ    = "ONPP-SEQ"
   ) |>
-  gt_color_rows(
-    columns   = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
-    palette   = "ggsci::green_material",
-    direction = -1
-  ) |>
   fmt_number(
     columns  = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
     decimals = 3
@@ -125,7 +164,7 @@ table_mse_theta <- df_mse_theta |>
   tab_header(
     # title    = "Average MSE by scenario and method",
     # subtitle = "Varying \u03B2",
-    title = "Average MSE"
+    title = paste0("Average MSE", mse_scale$label)
   ) |>
   tab_spanner(
     label   = "Method",
@@ -141,19 +180,13 @@ table_mse_theta <- df_mse_theta |>
     table.font.size          = 11
   )
 
-# apply row-wise coloring anchored at each row's own min/max
+# Highlight only the best (smallest) method per row, instead of a
+# continuous per-row color gradient across all four cells -- see
+# highlight_best_per_row() in aux_fun_sim.R for why.
 method_cols <- c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ")
-for (i in seq_len(nrow(df_mse_theta))) {
-  row_vals <- as.numeric(df_mse_theta[i, method_cols])
-
-  table_mse_theta <- table_mse_theta |>
-    data_color(
-      columns = all_of(method_cols),
-      rows    = i,
-      palette = viridisLite::mako(100, direction = -1)[30:70] ,
-      domain  = c(min(row_vals), max(row_vals))
-    )
-}
+table_mse_theta <- highlight_best_per_row(table_mse_theta, df_mse_theta,
+                                          columns = method_cols,
+                                          palette = viridisLite::mako)
 
 gtsave(table_mse_theta, "results/summary_tables/normal/mse_theta_table_normal.png", zoom = 3)
 
@@ -193,6 +226,9 @@ df_wis_theta <- data.frame(
     lapply(summary_normal$wis_list, function(x) x$hat_wis_onppseq[1]) %>% unlist()
   )
 )
+wis_scale <- add_common_scale(df_wis_theta, c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ"))
+df_wis_theta <- wis_scale$df
+
 table_wis_theta <- df_wis_theta |>
   gt(groupname_col = "Order") |>
   cols_label(
@@ -203,17 +239,12 @@ table_wis_theta <- df_wis_theta |>
     ONPP        = "ONPP",
     ONPP_SEQ    = "ONPP-SEQ"
   ) |>
-  gt_color_rows(
-    columns   = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
-    palette   = "ggsci::green_material",
-    direction = -1
-  ) |>
   fmt_number(
     columns  = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
     decimals = 3
   ) |>
   tab_header(
-    title    = "Average WIS"
+    title    = paste0("Average WIS", wis_scale$label)
   ) |>
   tab_spanner(
     label   = "Method",
@@ -229,18 +260,9 @@ table_wis_theta <- df_wis_theta |>
     table.font.size          = 11
   )
 
-# apply row-wise coloring anchored at 0
-for (i in seq_len(nrow(df_wis_theta))) {
-  row_vals <- as.numeric(df_wis_theta[i, method_cols])
-
-  table_wis_theta <- table_wis_theta |>
-    data_color(
-      columns = all_of(method_cols),
-      rows    = i,
-      palette = viridisLite::plasma(100, direction = -1)[30:70] ,
-      domain  = c(min(row_vals), max(row_vals))
-    )
-}
+table_wis_theta <- highlight_best_per_row(table_wis_theta, df_wis_theta,
+                                          columns = method_cols,
+                                          palette = viridisLite::plasma)
 gtsave(table_wis_theta, "results/summary_tables/normal/wis_theta_table_normal.png", zoom = 3)
 
 table_mse_wis_theta <- gt_two_column_layout(list(table_mse_theta, table_wis_theta))

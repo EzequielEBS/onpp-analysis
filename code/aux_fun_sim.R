@@ -356,7 +356,17 @@ sample_sce_lm <- function(par_list, data, gamma_model, delta_model, sampler_args
 }
 
 # function to run simulations in parallel
-sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model, seed = NULL) {
+sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model, seed = NULL,
+                    replicate_data = NULL) {
+  # replicate_data: optional list of length num_sim (bin/poi/normal_fixed_var
+  # only -- lm already threads its own per-replicate `data` through sce$data)
+  # overriding par_list fields per replicate, e.g. replicate_data[[i]] =
+  # list(z0 = c(...), z = ...). Use this via build_shared_replicate_data()
+  # to force two scenarios that share the same *set* of theta0 values (just
+  # assigned to different historical-dataset positions) to draw from
+  # exactly the same underlying data per replicate, instead of each
+  # independently simulating its own -- see build_shared_replicate_data()'s
+  # header comment for why that matters and what it does/doesn't buy you.
   # Start a cluster with the desired number of cores. on.exit() guarantees
   # the cluster is torn down even if something below errors (previously a
   # failed pblapply() run left worker processes running).
@@ -447,17 +457,28 @@ sim_sce <- function(model, num_cores, num_sim, sce, gamma_model, delta_model, se
       cl = cl
     )
   } else {
+    if (!is.null(replicate_data) && length(replicate_data) != num_sim) {
+      stop(sprintf("replicate_data has length %d but num_sim = %d -- need one entry per replicate.",
+                    length(replicate_data), num_sim))
+    }
     results <- pbapply::pblapply(
       seq_len(num_sim),
-      function(i, sce, gamma_model, delta_model) {
+      function(i, sce, gamma_model, delta_model, replicate_data) {
+        # When replicate_data[[i]] is supplied (e.g. a pre-generated z0/z
+        # pair from build_shared_replicate_data()), it overrides those
+        # fields of sce for this replicate only; sample_sce_*() already
+        # skips drawing its own z0/z whenever they're non-NULL. Without
+        # replicate_data this is just `sce`, unchanged from before.
+        par_list_i <- if (is.null(replicate_data)) sce else utils::modifyList(sce, replicate_data[[i]])
         tryCatch(
-          sample_sce(sce, gamma_model = gamma_model, delta_model = delta_model),
+          sample_sce(par_list_i, gamma_model = gamma_model, delta_model = delta_model),
           error = function(e) list(.failed = TRUE, .error = conditionMessage(e))
         )
       },
       sce = sce,
       gamma_model = gamma_model,
       delta_model = delta_model,
+      replicate_data = replicate_data,
       cl = cl
     )
   }
@@ -1129,97 +1150,248 @@ plot_sim_theta <- function(sce, sim, sim_sces, true_value = get("true_value", en
   return(plot_theta)
 }
 
-plot_sce3_theta <- function(sub_sce, sim, sim_sces, true_value = get("true_value", envir = .GlobalEnv)) {
+# ------------------------------------------------------------------------------
+# Shared look for the sce3-across-priors figures
+# ------------------------------------------------------------------------------
+# Both plot_sce3_theta()/plot_sce3_eta() used to build one ggplot per panel
+# by hand (one lapply per row), set a title/subtitle on each individually,
+# and stitch the panels together with patchwork's wrap_plots(). That meant
+# every row had to remember, on its own, to add the "(A)"/"(B)"/"(C)"/"(D)"
+# column labels -- plot_sce3_eta()'s NPP row did, but its ONPP row never
+# did, so reading an ONPP panel meant counting columns against the row
+# above it to figure out which prior it belonged to. Both functions are
+# rewritten below to reshape their data into one long data.frame and use
+# facet_grid()/facet_wrap() instead -- ggplot then generates consistent
+# strip labels for every row for free, and there's only one plot object
+# (and one legend) per scenario instead of 4-8 hand-assembled ones.
+#
+# Okabe-Ito-derived, colorblind-safe palette (avoids the red/green pairing
+# in the old RColorBrewer "Set1" palette, which is exactly the confusable
+# pair for the most common form of color blindness) -- linetype is mapped
+# redundantly alongside color so the lines stay distinguishable in
+# grayscale print, too.
+.sce3_theme <- function() {
+  theme_bw(base_size = 11) +
+    theme(
+      strip.background  = element_rect(fill = "grey90", color = NA),
+      strip.text         = element_text(face = "bold"),
+      plot.title         = element_text(face = "bold"),
+      panel.grid.minor   = element_blank(),
+      legend.position    = "bottom"
+    )
+}
+
+plot_sce3_theta <- function(sub_sce, sim, sim_sces, true_value = get("true_value", envir = .GlobalEnv),
+                            prior_labels = c("(A) Default", "(B) \u03B7 flat",
+                                             "(C) \u03B7, \u03B3 flat", "(D) All flat"),
+                            # The 3 sub-scenarios of Scenario III (incompatible order) in the
+                            # bernoulli study, in order -- same theta0/Discrepancy values as
+                            # analysis_bin.r's df_mse_theta rows 7-9 (scenarios_bin.R's
+                            # sce3_theta0). Order is fixed ("Incompatible") since plot_sce3_*()
+                            # only ever plots Scenario III's sub-scenarios. No "Scenario III.I"
+                            # label -- theta0/Order/Discrepancy already identify the scenario,
+                            # matching the analysis_seq_*.r figures' title pattern.
+                            sce_order = "Incompatible",
+                            sce_discrepancy = c("None", "Small", "Large"),
+                            sce_theta0 = list(c(0.50, 0.40, 0.30), c(0.40, 0.30, 0.20), c(0.25, 0.15, 0.05))) {
   # true_value defaults to looking up the global of the same name (see the
   # note in plot_sce_bin() above) so existing call sites keep working.
-  name_sce <- as.roman(ceiling(3))
-  name_sce <- ifelse(sub_sce %% 3 == 1, paste0(name_sce,".I"),
-                     ifelse(sub_sce %% 3 == 2, paste0(name_sce,".II"), paste0(name_sce,".III")))
+  theta0_str <- paste0("(", paste(formatC(sce_theta0[[sub_sce]], format = "f", digits = 2), collapse = ", "), ")")
+  full_title <- bquote(
+    theta[0] == .(theta0_str) * ", Order: " * .(sce_order) * ", Discrepancy: " * .(sce_discrepancy[sub_sce])
+  )
   sim_sub_sce <- sim_sces[[sub_sce]]
-  plot_theta <- lapply(1:length(sim_sub_sce), function(i) {
-    plot <- ggplot() +
-    geom_density(aes(x = sim_sub_sce[[i]]$theta[[sim]]$theta_npp, color = "NPP"), linewidth = 0.8) +
-    geom_density(aes(x = sim_sub_sce[[i]]$theta[[sim]]$theta_onpp, color = "ONPP"), linewidth = 0.8) +
-    geom_vline(xintercept = true_value, linetype = "dotted", color = "black", size = 1) +
-    scale_color_manual(name = NULL,
-                       values = c("NPP" = RColorBrewer::brewer.pal(4, "Set2")[1],
-                                  "ONPP" = RColorBrewer::brewer.pal(4, "Set2")[2])) +
-    labs(x = expression(theta),
-         y = NULL) +
-    xlim(0,1)
-    if (i == 1) {
-      plot <- plot +
-          ggtitle(label = paste0("Scenario ", name_sce),
-                  subtitle = paste0("(", LETTERS[i], ")"))
-    } else {
-      plot <- plot +
-        ggtitle(label = NULL,
-                subtitle = paste0("(", LETTERS[i], ")"))
-    }
-    return(plot)
-  })
-  combined_plots <- wrap_plots(plot_theta, ncol = length(plot_theta)) +
-    plot_layout(guides = "collect")
-  return(combined_plots)
+
+  # th$theta_npp/theta_onpp are `posterior` draws objects, not plain
+  # numeric vectors -- rbind-ing data.frame()s built directly from them
+  # trips base R's match.names() (draws-object metadata riding along on
+  # each column), the same failure already fixed the same way in
+  # plot_eta_theta_density(). as.numeric() strips that metadata first.
+  long_df <- do.call(rbind, lapply(seq_along(sim_sub_sce), function(i) {
+    th <- sim_sub_sce[[i]]$theta[[sim]]
+    rbind(
+      data.frame(value = as.numeric(th$theta_npp),  method = "NPP",  prior = prior_labels[i]),
+      data.frame(value = as.numeric(th$theta_onpp), method = "ONPP", prior = prior_labels[i])
+    )
+  }))
+  long_df$method <- factor(long_df$method, levels = c("NPP", "ONPP"))
+  long_df$prior  <- factor(long_df$prior, levels = prior_labels)
+
+  ggplot(long_df, aes(x = value, color = method)) +
+    geom_density(linewidth = 0.8) +
+    geom_vline(xintercept = true_value, linetype = "dotted", color = "black", linewidth = 0.6) +
+    facet_wrap(~ prior, nrow = 1, scales = "free_y") +
+    # Okabe-Ito blue/vermillion -- deliberately NOT reusing any of the eta
+    # plot's 3 colors (orange/sky-blue/bluish-green, see plot_sce3_eta()
+    # below), since these are companion figures for the same scenario and
+    # the same color meaning two different things across them is confusing.
+    scale_color_manual(name = NULL, values = c("NPP" = "#0072B2", "ONPP" = "#D55E00")) +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+    labs(x = expression(theta), y = NULL, title = full_title) +
+    .sce3_theme()
+}
+
+plot_sce3_eta <- function(sub_sce, sim, sim_sces,
+                          prior_labels = c("(A) Default", "(B) \u03B7 flat",
+                                           "(C) \u03B7, \u03B3 flat", "(D) All flat"),
+                          # Same rationale as plot_sce3_theta() above.
+                          sce_order = "Incompatible",
+                          sce_discrepancy = c("None", "Small", "Large"),
+                          sce_theta0 = list(c(0.50, 0.40, 0.30), c(0.40, 0.30, 0.20), c(0.25, 0.15, 0.05))) {
+  theta0_str <- paste0("(", paste(formatC(sce_theta0[[sub_sce]], format = "f", digits = 2), collapse = ", "), ")")
+  full_title <- bquote(
+    theta[0] == .(theta0_str) * ", Order: " * .(sce_order) * ", Discrepancy: " * .(sce_discrepancy[sub_sce])
+  )
+  sim_sub_sce <- sim_sces[[sub_sce]]
+
+  # Same fix as plot_sce3_theta() above: delta_npp/delta_onpp columns carry
+  # `posterior` draws-object metadata, which breaks rbind()'s match.names()
+  # once several of these data.frames get stacked -- as.numeric() strips it.
+  long_df <- do.call(rbind, lapply(seq_along(sim_sub_sce), function(i) {
+    delta <- sim_sub_sce[[i]]$delta[[sim]]
+    rbind(
+      data.frame(value = as.numeric(delta$delta_npp[, 1]),  component = "eta[1]", method = "NPP",  prior = prior_labels[i]),
+      data.frame(value = as.numeric(delta$delta_npp[, 2]),  component = "eta[2]", method = "NPP",  prior = prior_labels[i]),
+      data.frame(value = as.numeric(delta$delta_npp[, 3]),  component = "eta[3]", method = "NPP",  prior = prior_labels[i]),
+      data.frame(value = as.numeric(delta$delta_onpp[, 1]), component = "eta[1]", method = "ONPP", prior = prior_labels[i]),
+      data.frame(value = as.numeric(delta$delta_onpp[, 2]), component = "eta[2]", method = "ONPP", prior = prior_labels[i]),
+      data.frame(value = as.numeric(delta$delta_onpp[, 3]), component = "eta[3]", method = "ONPP", prior = prior_labels[i])
+    )
+  }))
+  long_df$method    <- factor(long_df$method, levels = c("NPP", "ONPP"))
+  long_df$prior     <- factor(long_df$prior, levels = prior_labels)
+  long_df$component <- factor(long_df$component, levels = c("eta[1]", "eta[2]", "eta[3]"))
+
+  ggplot(long_df, aes(x = value, color = component)) +
+    geom_density(bounds = c(0, 1), linewidth = 0.8) +
+    # Plain facet_grid(scales = "free_y") only frees the y-axis per ROW
+    # (shared across all 4 priors in that row), and facet_wrap() frees it
+    # per panel but loses the shared prior/method header (each panel gets
+    # its own repeated "NPP"/"(A) Default" strip instead). ggh4x's
+    # facet_grid2(independent = "y") keeps facet_grid's shared header
+    # (priors across the top, method down the side, each once) while still
+    # giving every individual panel its own free y-axis -- requires the
+    # ggh4x package (library(ggh4x) at the top of the calling script).
+    ggh4x::facet_grid2(method ~ prior, scales = "free_y", independent = "y") +
+    scale_color_manual(
+      name   = NULL,
+      breaks = c("eta[1]", "eta[2]", "eta[3]"),
+      labels = c(expression(eta[1]), expression(eta[2]), expression(eta[3])),
+      values = c("eta[1]" = "#E69F00", "eta[2]" = "#56B4E9", "eta[3]" = "#009E73")
+    ) +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+    labs(x = expression(eta), y = NULL, title = full_title) +
+    .sce3_theme()
+}
+
+# ------------------------------------------------------------------------------
+# Shared Default-vs-SEQ prior/posterior density plots
+# ------------------------------------------------------------------------------
+#
+# analysis_seq_bin.r, analysis_seq_normal.r and analysis_seq_lm.r each used
+# to carry their own copy of plot_eta_bin()/plot_eta_normal()/plot_eta_lm()
+# -- three byte-for-byte identical implementations (same delta_npp/
+# delta_nppseq/delta_onpp/delta_onppseq structure, same 3 eta components,
+# same 0-1 domain) built out of 3 hand-assembled ggplot() calls stitched
+# together with patchwork, each repeating its own scale_color_manual() and
+# theme_minimal(). That's exactly the copy-paste-across-families pattern
+# this file's other comments call out as the source of the LM
+# hist_1/hist_3 relabeling bug -- one shared function here instead, reshaped
+# to a long data.frame and faceted the same way as plot_sce3_eta() above,
+# so there's one definition to fix instead of three that can drift apart.
+#
+# Default/SEQ get their own pair -- black and Okabe-Ito reddish-purple --
+# instead of reusing plot_sce3_theta()'s NPP/ONPP blue/vermillion: the two
+# figures compare different things (Default-vs-SEQ here, NPP-vs-ONPP
+# there), so the same colors meaning something different across them is
+# confusing, exactly like the theta/eta color clash fixed earlier in this
+# file. Defined once here so plot_eta_prior_post(), plot_theta_prior_post()
+# and analysis_seq_lm.r's plot_theta_lm() (whose theta is a 4-vector and
+# stays separate, but shares this same Default/SEQ legend) can't drift
+# apart the same way the three old per-family copies did.
+.default_seq_colors <- c("Default" = "#000000", "SEQ" = "#CC79A7")
+
+plot_eta_prior_post <- function(draws, ordered = FALSE, post = FALSE, title = NULL, leg = TRUE) {
+  eta_nppseq <- draws$delta_nppseq
+  eta_npp    <- draws$delta_npp
+  if (ordered) {
+    eta_nppseq <- draws$delta_onppseq
+    eta_npp    <- draws$delta_onpp
   }
 
-plot_sce3_eta <- function(sub_sce, sim, sim_sces){
-  name_sce <- as.roman(ceiling(3))
-  name_sce <- ifelse(sub_sce %% 3 == 1, paste0(name_sce,".I"), 
-                     ifelse(sub_sce %% 3 == 2, paste0(name_sce,".II"), paste0(name_sce,".III")))
-  
-  sim_sub_sce <- sim_sces[[sub_sce]]
-  plots_npp <- lapply(1:length(sim_sub_sce), function(i) {
-    plot <- ggplot() +
-      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,1], color = "delta1"), linewidth = 0.8) +
-      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,2], color = "delta2"), linewidth = 0.8) +
-      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_npp[,3], color = "delta3"), linewidth = 0.8) +
-      scale_color_manual(name = NULL, 
-                         values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                    "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                    "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                         labels = c(expression(eta[1]), 
-                                    expression(eta[2]),
-                                    expression(eta[3]))) +
-      labs(x = expression(eta),
-           y = NULL)
-    if (i == 1) {
-      plot <- plot +
-          ggtitle(label = paste0("Scenario ", name_sce, "\nNPP"),
-                  subtitle = paste0("(", LETTERS[i], ")"))
-    } else {
-      plot <- plot + 
-        ggtitle(label = NULL,
-                subtitle = paste0("(", LETTERS[i], ")"))
-    }
-    return(plot)
-    })
-  
-  plots_onpp <- lapply(1:length(sim_sub_sce), function(i) {
-    plot <- ggplot() +
-      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,1], color = "delta1"), linewidth = 0.8) +
-      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,2], color = "delta2"), linewidth = 0.8) +
-      geom_density(bounds = c(0, 1), aes(x = sim_sub_sce[[i]]$delta[[sim]]$delta_onpp[,3], color = "delta3"), linewidth = 0.8) +
-      scale_color_manual(name = NULL, 
-                         values = c("delta1" = RColorBrewer::brewer.pal(3, "Set1")[1], 
-                                    "delta2" = RColorBrewer::brewer.pal(3, "Set1")[2],
-                                    "delta3" = RColorBrewer::brewer.pal(3, "Set1")[3]),
-                         labels = c(expression(eta[1]), 
-                                    expression(eta[2]),
-                                    expression(eta[3]))) +
-      labs(x = expression(eta),
-           y = NULL)
-      if (i == 1) {
-        plot <- plot +
-          ggtitle(label = "ONPP")
-      }
-    return(plot)
-  })
-  
-  combined_plots <- wrap_plots(plots_npp, ncol = length(plots_npp)) / 
-    wrap_plots(plots_onpp, ncol = length(plots_onpp)) +
-    plot_layout(guides = "collect")
-  return(combined_plots)
+  # as.numeric(): see the match.names() note on plot_sce3_eta() above --
+  # same posterior/draws-object metadata issue when several of these get
+  # combined via rbind().
+  long_df <- do.call(rbind, lapply(1:3, function(k) {
+    rbind(
+      data.frame(value = as.numeric(eta_npp[, k]),    method = "Default", component = paste0("eta[", k, "]")),
+      data.frame(value = as.numeric(eta_nppseq[, k]), method = "SEQ",     component = paste0("eta[", k, "]"))
+    )
+  }))
+  long_df$method    <- factor(long_df$method, levels = c("Default", "SEQ"))
+  long_df$component <- factor(long_df$component, levels = paste0("eta[", 1:3, "]"))
+
+  y_lab <- if (post) {
+    expression(paste(pi[A], "(", eta ~ "|" ~ D ~ "," ~ D[0], ")"))
+  } else {
+    expression(paste(pi[A], "(", eta, ")"))
+  }
+
+  p <- ggplot(long_df, aes(x = value, color = method)) +
+    # Prior curves dotted, posterior curves solid -- same linetype, on top
+    # of the existing color coding, so a prior/posterior pair is
+    # distinguishable even if printed in grayscale or the colors are hard
+    # to tell apart.
+    geom_density(bounds = c(0, 1), linewidth = 0.8, linetype = if (post) "solid" else "dashed") +
+    facet_wrap(~ component, nrow = 1, labeller = label_parsed, scales = "free_y") +
+    scale_color_manual(name = NULL, values = .default_seq_colors) +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+    labs(x = expression(eta), y = y_lab, title = title) +
+    .sce3_theme()
+
+  p + theme(legend.position = if (leg) "bottom" else "none")
+}
+
+# Shared scalar-theta counterpart, for the two families (bin, normal) whose
+# theta is a single number -- lm's theta is a 4-vector (beta0/beta1/beta2/
+# sigma^2) with its own MLE-marker overlay, different enough that
+# plot_theta_lm() stays a separate, hand-written function in
+# analysis_seq_lm.r rather than being forced into this shape.
+plot_theta_prior_post <- function(draws, ordered = FALSE, post = FALSE, theta_true, low_band, upp_band,
+                                  title = NULL, leg = TRUE) {
+  theta_nppseq <- draws$theta_nppseq
+  theta_npp    <- draws$theta_npp
+  if (ordered) {
+    theta_nppseq <- draws$theta_onppseq
+    theta_npp    <- draws$theta_onpp
+  }
+
+  long_df <- rbind(
+    data.frame(value = as.numeric(theta_npp),    method = "Default"),
+    data.frame(value = as.numeric(theta_nppseq), method = "SEQ")
+  )
+  long_df$method <- factor(long_df$method, levels = c("Default", "SEQ"))
+
+  y_lab <- if (post) {
+    expression(paste(pi[0], "(", theta ~ "|" ~ D ~ "," ~ D[0], ")"))
+  } else {
+    expression(paste(pi[0], "(", theta, ")"))
+  }
+
+  p <- ggplot(long_df, aes(x = value, color = method)) +
+    # Prior curves dotted, posterior curves solid -- same reasoning as
+    # plot_eta_prior_post() above.
+    geom_density(linewidth = 0.8, bounds = c(theta_true - low_band, theta_true + upp_band),
+                linetype = if (post) "solid" else "dashed") +
+    # Reference line uses grey, not black, so it doesn't visually collide
+    # with the (now black) "Default" density curve.
+    geom_vline(xintercept = theta_true, linetype = "dotted", color = "grey40", linewidth = 0.6) +
+    scale_color_manual(name = NULL, values = .default_seq_colors) +
+    scale_x_continuous(limits = c(theta_true - low_band, theta_true + upp_band)) +
+    labs(x = expression(theta), y = y_lab, title = title) +
+    .sce3_theme()
+
+  p + theme(legend.position = if (leg) "bottom" else "none")
 }
 
 plot_eta_prior <- function(samples){
@@ -1525,6 +1697,119 @@ plot_eta_theta_density <- function(sim, replicate,
 }
 
 # =============================================================================
+# Same eta/theta density plot as plot_eta_theta_density() above, but in the
+# visual style used elsewhere in this file for the sce3/prior-post figures
+# (facet by eta component instead of one ggplot per method, .sce3_theme(),
+# an Okabe-Ito colorblind-safe palette, a single legend collected at the
+# bottom) instead of plot_eta_theta_density()'s one-panel-per-method/
+# theme_grey defaults. Family-agnostic like plot_eta_theta_density(); takes
+# `title` directly (a string or bquote()/expression, e.g. built the same
+# way as analysis_seq_*.r's theta[0] == ...~", Order:"~... titles) instead
+# of assembling one from a scenario_label + replicate + family, since
+# callers of this one already build that title themselves.
+# =============================================================================
+plot_eta_theta_density_styled <- function(sim, replicate,
+                                           family = c("bin", "poi", "normal", "lm"),
+                                           true_theta = NULL,
+                                           theta_labels = NULL, title = NULL) {
+  family <- match.arg(family)
+  methods <- c("npp", "nppseq", "onpp", "onppseq")
+  method_labels <- c(npp = "NPP", nppseq = "NPP-SEQ", onpp = "ONPP", onppseq = "ONPP-SEQ")
+  # NPP/NPP-SEQ reuse the black/reddish-purple "Default"/"SEQ" pair used
+  # throughout this file (see .default_seq_colors); ONPP/ONPP-SEQ get the
+  # same treatment in blue/vermillion, so the two order-of-borrowing
+  # families read as two paired color groups instead of four arbitrary
+  # colors.
+  method_colors <- c(NPP = "#000000", "NPP-SEQ" = "#CC79A7",
+                     ONPP = "#0072B2", "ONPP-SEQ" = "#D55E00")
+
+  if (is.null(sim$delta) || is.null(sim$theta)) {
+    stop("`sim` doesn't look like a single scenario's simulation object -- ",
+         "it has no $delta/$theta. Did you pass the whole sim_sces list ",
+         "instead of one element of it (e.g. sim_sces[[sce]])?")
+  }
+  if (replicate < 1 || replicate > length(sim$delta)) {
+    stop("replicate ", replicate, " out of range 1:", length(sim$delta))
+  }
+
+  eta_rec <- sim$delta[[replicate]]
+  theta_rec <- sim$theta[[replicate]]
+
+  # ---- eta: facet by method, color = component -- same component palette
+  # (orange/sky-blue/bluish-green) and color-by-component idea as
+  # plot_sce3_eta() above, just faceted on method (one scenario here, so
+  # there's no "prior" dimension to also facet on like that one does).
+  n_eta <- ncol(eta_rec$delta_npp)
+  eta_key  <- paste0("eta[", seq_len(n_eta), "]")
+  eta_expr <- lapply(seq_len(n_eta), function(i) bquote(eta[.(i)]))
+  eta_pal  <- c("eta[1]" = "#E69F00", "eta[2]" = "#56B4E9", "eta[3]" = "#009E73")
+
+  eta_long <- do.call(rbind, lapply(methods, function(m) {
+    draws <- eta_rec[[paste0("delta_", m)]]
+    do.call(rbind, lapply(seq_len(n_eta), function(i) {
+      # as.numeric(): see the match.names() note on plot_sce3_eta() above --
+      # same posterior-package draws-object metadata issue.
+      data.frame(value = as.numeric(draws[, i]),
+                 component = eta_key[i],
+                 method = method_labels[[m]])
+    }))
+  }))
+  eta_long$method    <- factor(eta_long$method, levels = unname(method_labels))
+  eta_long$component <- factor(eta_long$component, levels = eta_key)
+
+  eta_plot <- ggplot(eta_long, aes(x = value, color = component)) +
+    geom_density(bounds = c(0, 1), linewidth = 0.8) +
+    facet_wrap(~ method, nrow = 1, scales = "free_y") +
+    scale_color_manual(name = NULL, breaks = eta_key, labels = eta_expr, values = eta_pal) +
+    scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+    labs(x = expression(eta), y = NULL, title = title) +
+    .sce3_theme()
+
+  # ---- theta: single panel (bin/poi/normal) or one per component (lm) ----
+  is_multivariate_theta <- is.matrix(theta_rec$theta_npp)
+  n_theta <- if (is_multivariate_theta) ncol(theta_rec$theta_npp) else 1
+
+  if (is.null(theta_labels)) {
+    theta_labels <- if (!is_multivariate_theta) {
+      list(expression(theta))
+    } else {
+      c(lapply(seq_len(n_theta - 1), function(i) bquote(beta[.(i)])),
+        list(expression(sigma)))
+    }
+  }
+
+  theta_plots <- lapply(seq_len(n_theta), function(j) {
+    df <- do.call(rbind, lapply(methods, function(m) {
+      draws <- theta_rec[[paste0("theta_", m)]]
+      vals <- if (is_multivariate_theta) as.numeric(draws[, j]) else as.numeric(draws)
+      data.frame(value = vals, method = method_labels[[m]])
+    }))
+    df$method <- factor(df$method, levels = unname(method_labels))
+    p <- ggplot(df, aes(x = value, color = method)) +
+      geom_density(linewidth = 0.8) +
+      scale_color_manual(name = NULL, values = method_colors) +
+      labs(x = theta_labels[[j]], y = NULL) +
+      .sce3_theme()
+    if (family == "bin") {
+      p <- p + scale_x_continuous(limits = c(0, 1), breaks = c(0, 0.25, 0.5, 0.75, 1))
+    }
+    if (!is.null(true_theta)) {
+      true_theta_j <- if (is_multivariate_theta) true_theta[j] else true_theta[1]
+      # grey, not black, so it doesn't visually collide with the (now
+      # black) "NPP" curve -- same reasoning as elsewhere in this file.
+      p <- p + geom_vline(xintercept = true_theta_j, linetype = "dashed",
+                          color = "grey40", linewidth = 0.6)
+    }
+    p
+  })
+  theta_combined <- wrap_plots(theta_plots, ncol = n_theta)
+
+  (eta_plot / theta_combined) +
+    plot_layout(guides = "collect") &
+    theme(legend.position = "bottom")
+}
+
+# =============================================================================
 # General, family-agnostic boxplot of hat-eta / hat-theta across replicates
 # =============================================================================
 #
@@ -1612,4 +1897,295 @@ plot_eta_theta_boxplot <- function(sim, family = c("bin", "poi", "normal", "lm")
 
   (eta_combined / theta_combined) +
     plot_annotation(title = title)
+}
+
+# =============================================================================
+# Highlight only the best (smallest) value per row in a gt summary table
+# =============================================================================
+#
+# Keeps the original per-row data_color() gradient (continuous mako/plasma
+# coloring, anchored at each row's own min/max, same as before), with gt's
+# automatic black-or-white per-cell text contrast left ON
+# (autocolor_text = TRUE) -- the mako/plasma slice used here spans fairly
+# dark to medium shades, and a single fixed text color was unreadable on
+# the darker cells (see the "hard to read on dark background" report this
+# function was patched for). On top of that automatic contrast, this
+# function explicitly makes just the row's minimum bold + a distinct
+# `best_text_color` (white by default), so exactly one number per
+# row/group stands out as the best method, in addition to every other
+# cell staying legible against its own background.
+#
+# Arguments:
+#   tbl     a gt table object, already built (gt(), cols_label(), spanners,
+#           etc. all applied)
+#   df      the data.frame the table was built from -- row order must match
+#           `tbl` (i.e. no filtering/reordering happened in between)
+#   columns character vector of column names to color/highlight (typically
+#           the method columns, e.g. c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ"))
+#   groups  optional list of character vectors partitioning `columns` into
+#           groups that should each get their own row-wise gradient/best
+#           cell, instead of one gradient across all of `columns`. Use this
+#           when `columns` mixes quantities on different scales that
+#           shouldn't share one color domain -- e.g. lm's summary tables
+#           hold both beta and sigma columns per row, so beta and sigma
+#           each need their own min/max: groups = list(beta_cols, sigma_cols).
+#           Defaults to list(columns), i.e. one group covering everything.
+#   palette     viridisLite palette function for the gradient (e.g.
+#               viridisLite::mako for norm/MSE tables, viridisLite::plasma
+#               for WIS tables -- matching the original)
+#   best_text_color  text color forced onto the row's minimum cell
+#
+# Returns the gt table with the gradient and highlighting applied.
+#
+# Example:
+#   table_mse_theta <- highlight_best_per_row(table_mse_theta, df_mse_theta,
+#                                              columns = method_cols,
+#                                              palette = viridisLite::mako)
+#   table_wis_theta <- highlight_best_per_row(table_wis_theta, df_wis_theta,
+#                                              columns = method_cols,
+#                                              palette = viridisLite::plasma)
+#   tbl <- highlight_best_per_row(tbl, df, columns = method_cols,
+#                                  groups = list(beta_cols, sigma_cols),
+#                                  palette = viridisLite::mako)
+highlight_best_per_row <- function(tbl, df, columns, groups = NULL,
+                                    palette = viridisLite::mako,
+                                    best_text_color = "white",
+                                    best_border_color = "black") {
+  if (is.null(groups)) groups <- list(columns)
+
+  # Relative luminance of a hex color (WCAG-style weights), used to pick
+  # black vs white text ourselves instead of relying on gt's
+  # autocolor_text: that heuristic turned out to flip inconsistently
+  # between visually similar shades of the same gradient -- some cells
+  # landed on black text on a background just as dark as a neighboring
+  # cell that got white (the "nothing changed" report this was patched
+  # for). Computing it ourselves from the exact rendered fill color below
+  # is deterministic and doesn't depend on gt's internal contrast pick.
+  .text_for_bg <- function(hex) {
+    rgb <- grDevices::col2rgb(hex) / 255
+    lin <- ifelse(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055)^2.4)
+    L <- 0.2126 * lin[1, ] + 0.7152 * lin[2, ] + 0.0722 * lin[3, ]
+    ifelse(L > 0.42, "black", "white")
+  }
+
+  for (i in seq_len(nrow(df))) {
+    for (grp in groups) {
+      row_vals <- as.numeric(df[i, grp])
+      best_col <- grp[which.min(row_vals)]
+      domain   <- c(min(row_vals), max(row_vals))
+      pal      <- palette(100, direction = -1)[30:70]
+
+      # Fill only -- no autocolor_text. Text color for every cell in this
+      # group/row is set explicitly below, cell by cell.
+      tbl <- tbl |>
+        data_color(
+          columns = all_of(grp),
+          rows = i,
+          palette = pal,
+          domain = domain,
+          autocolor_text = FALSE
+        )
+
+      # scales::col_numeric() with the same palette + domain reproduces
+      # exactly the fill color data_color() just assigned to each cell
+      # (gt uses this same scales function internally for a plain color
+      # vector), so .text_for_bg() below is judging the actual rendered
+      # background, not an approximation of it.
+      color_fn <- scales::col_numeric(palette = pal, domain = domain)
+      for (col in grp) {
+        hex <- color_fn(as.numeric(df[i, col]))
+        if (col == best_col) {
+          # Best cell: forced best_text_color (bold) + border, so it
+          # stands out regardless of how light/dark its own fill renders
+          # -- same colorblind-safe discipline as the rest of this
+          # project's palettes (see plot_theta_lm()'s comment in
+          # analysis_seq_lm.r).
+          style <- list(
+            cell_text(color = best_text_color, weight = "bold"),
+            cell_borders(sides = "all", color = best_border_color, weight = px(3))
+          )
+        } else {
+          style <- cell_text(color = .text_for_bg(hex))
+        }
+        tbl <- tbl |>
+          tab_style(style = style, locations = cells_body(columns = all_of(col), rows = i))
+      }
+    }
+  }
+  tbl
+}
+
+# =============================================================================
+# Shared Monte Carlo replicates across scenarios that share a theta0 *set*
+# =============================================================================
+#
+# Motivating case: scenarios_bin.R's "cancellation effect" pair,
+#   "5_1" = c(0.10, 0.90, 0.50), "5_2" = c(0.50, 0.90, 0.10)
+# is the same three theta0 values with positions 1 and 3 swapped. NPP and
+# NPP-SEQ's eta prior (eta_bin.stan) is iid/exchangeable across the K
+# historical datasets, with no ordering constraint -- so relabeling which
+# position holds which theta0 value is a pure symmetry for them: their
+# *true* MSE/WIS must be identical between "5_1" and "5_2". ONPP/ONPP-SEQ
+# (gamma_bin.stan's eta = cumulative_sum(gamma), forcing eta1<=eta2<=eta3)
+# are genuinely order-sensitive and are NOT expected to match -- that's the
+# whole point of testing this permutation.
+#
+# Today each scenario draws its own historical data (z0) and current data
+# (z) independently inside sample_sce_bin(), even when seeded identically,
+# because data is drawn *by position* (position k's rbinom() call always
+# happens before position k+1's, consuming a different point in the RNG
+# stream), not by theta0 *value*. So even with a shared seed, "5_1"'s
+# position-1 draw (theta0 = 0.10) and "5_2"'s position-3 draw (also
+# theta0 = 0.10) land at different stream offsets and get different
+# numbers -- same seed, but not the same data. That leaves NPP/NPP-SEQ's
+# reported MSE/WIS differing by ordinary Monte Carlo noise between "5_1"
+# and "5_2", instead of being (near-)identical the way the underlying
+# symmetry says they should be.
+#
+# build_shared_replicate_data() fixes this at the data level: for each
+# *unique* theta0 value appearing anywhere in the group, it draws num_sim
+# iid replicates ONCE, then reassembles each scenario's per-replicate z0 by
+# looking up the shared draw for the value at each of ITS OWN positions --
+# so scenario "5_1"'s position 1 (theta0 = 0.10) and scenario "5_2"'s
+# position 3 (theta0 = 0.10) get literally the same draw for a given
+# replicate index, correctly relabeled rather than reused positionally.
+# The current-study data z (depends only on n/theta, not theta0) is drawn
+# once and shared identically across every scenario in the group.
+#
+# Feed the result into sim_sce()'s `replicate_data` argument (one call per
+# scenario, using that scenario's own entry) to make its data generation
+# use these shared draws instead of drawing fresh internally.
+#
+# NOTE on what this does and doesn't guarantee: with shared data, NPP/
+# NPP-SEQ's *posterior given the data* is exactly the same distribution
+# for matched replicates across the group (the data is identical up to
+# relabeling, and the model is exchangeable) -- but .fit_family() doesn't
+# pass an explicit seed to cmdstanr's $sample() calls, so each scenario's
+# Stan run still draws its own independent MCMC seed. That means results
+# won't be bit-for-bit identical even after this fix, but the dominant
+# source of divergence (independently-simulated data) is eliminated,
+# leaving only ordinary MCMC sampling noise -- which should be much
+# smaller. Forcing fully deterministic, bit-identical output would
+# additionally require passing a shared seed into $sample() itself, which
+# this function does not do (that's a separate, bigger change to
+# .fit_family()/sample_sce_bin(), not made here).
+#
+# Arguments:
+#   theta0_list  named list, one theta0 vector per scenario in the group
+#                (e.g. list(`5_1` = c(0.10, 0.90, 0.50),
+#                           `5_2` = c(0.50, 0.90, 0.10))) -- every vector
+#                must be a permutation of the same multiset of values, or
+#                this stops with an error (sharing draws only makes sense
+#                across scenarios that actually share a theta0 set).
+#   n0           the (shared) per-position sample sizes, e.g. c(100,100,100)
+#   n, theta     the current-study sample size and true theta -- must be the
+#                same for every scenario in the group (asserted implicitly:
+#                pass the single shared values, not a per-scenario list)
+#   num_sim      number of replicates to generate
+#   seed         optional seed for reproducibility (set.seed() on the
+#                current process -- this runs sequentially, not on a
+#                cluster, so a plain set.seed() suffices here)
+#
+# Returns a named list (same names as theta0_list), each entry a list of
+# length num_sim of list(z0 = <vector, length(n0)>, z = <scalar>), ready to
+# pass as sim_sce()'s `replicate_data` for that scenario.
+#
+# Example:
+#   shared_v <- build_shared_replicate_data(
+#     theta0_list = list(`5_1` = scenarios[["5_1"]]$theta0,
+#                        `5_2` = scenarios[["5_2"]]$theta0),
+#     n0 = scenarios[["5_1"]]$n0, n = scenarios[["5_1"]]$n,
+#     theta = scenarios[["5_1"]]$theta,
+#     num_sim = n_sim, seed = base_seed
+#   )
+#   sims[["5_1"]] <- sim_sce(model = "bin", n_cores, n_sim, scenarios[["5_1"]],
+#                             gamma_model_bin, delta_model_bin,
+#                             replicate_data = shared_v[["5_1"]])
+#   sims[["5_2"]] <- sim_sce(model = "bin", n_cores, n_sim, scenarios[["5_2"]],
+#                             gamma_model_bin, delta_model_bin,
+#                             replicate_data = shared_v[["5_2"]])
+build_shared_replicate_data <- function(theta0_list, n0, n, theta, num_sim, seed = NULL) {
+  scenario_names <- names(theta0_list)
+  if (is.null(scenario_names) || any(scenario_names == "")) {
+    stop("theta0_list must be a named list, one theta0 vector per scenario.")
+  }
+  K <- length(n0)
+  for (nm in scenario_names) {
+    if (length(theta0_list[[nm]]) != K) {
+      stop(sprintf(
+        "theta0_list[['%s']] has length %d but n0 has length %d -- every scenario's ",
+        "theta0 must have one entry per historical dataset in n0.",
+        nm, length(theta0_list[[nm]])
+      ))
+    }
+  }
+
+  # Every scenario's theta0 must be a permutation of the SAME multiset of
+  # values -- otherwise "shared replicates" doesn't mean anything, and
+  # silently proceeding would quietly share draws between scenarios that
+  # don't actually agree on their theta0 set.
+  ref_sorted <- sort(theta0_list[[1]])
+  for (nm in scenario_names[-1]) {
+    if (!isTRUE(all.equal(sort(theta0_list[[nm]]), ref_sorted))) {
+      stop(sprintf(
+        "theta0_list[['%s']] = (%s) is not a permutation of theta0_list[['%s']] = (%s) -- ",
+        "build_shared_replicate_data() only makes sense for scenarios that share the ",
+        "exact same set of theta0 values, just assigned to different positions.",
+        nm, paste(theta0_list[[nm]], collapse = ", "),
+        scenario_names[1], paste(ref_sorted, collapse = ", ")
+      ))
+    }
+  }
+
+  # Every occurrence of a given theta0 value must be paired with the same
+  # n0, or the "shared draw" for that value wouldn't actually be drawn
+  # from the same distribution at every position it appears in. With the
+  # current n0 = c(100,100,100) shared across every position this always
+  # holds, but this guards against a future scenario table where n0 varies
+  # by position.
+  n0_for_value <- list()
+  for (nm in scenario_names) {
+    theta0 <- theta0_list[[nm]]
+    for (k in seq_len(K)) {
+      key <- as.character(theta0[k])
+      if (is.null(n0_for_value[[key]])) {
+        n0_for_value[[key]] <- n0[k]
+      } else if (n0_for_value[[key]] != n0[k]) {
+        stop(sprintf(
+          "theta0 value %s has n0 = %d at one position but n0 = %d at another ",
+          "(scenario '%s', position %d) -- shared replicates require the same ",
+          "n0 wherever a given theta0 value appears.",
+          key, n0_for_value[[key]], n0[k], nm, k
+        ))
+      }
+    }
+  }
+
+  if (!is.null(seed)) set.seed(seed)
+
+  # One shared draw per unique theta0 value, generated once and reused --
+  # relabeled into position -- by every scenario that needs it.
+  z0_by_value <- lapply(names(n0_for_value), function(key) {
+    rbinom(num_sim, n0_for_value[[key]], as.numeric(key))
+  })
+  names(z0_by_value) <- names(n0_for_value)
+
+  # Current-study data doesn't depend on theta0 at all -- same n/theta for
+  # every scenario in the group, so it's drawn once and shared identically.
+  z_shared <- rbinom(num_sim, n, theta)
+
+  # Assemble each scenario's per-replicate z0 by VALUE, not position: this
+  # is the step that has to get the order right. Scenario nm's position k
+  # gets the shared draw for theta0_list[[nm]][k] -- whatever value that
+  # scenario actually has there -- never "whatever happened to be at
+  # position k" in some other scenario.
+  result <- lapply(scenario_names, function(nm) {
+    theta0 <- theta0_list[[nm]]
+    lapply(seq_len(num_sim), function(i) {
+      z0_i <- vapply(seq_len(K), function(k) z0_by_value[[as.character(theta0[k])]][i], numeric(1))
+      list(z0 = z0_i, z = z_shared[i])
+    })
+  })
+  names(result) <- scenario_names
+  result
 }

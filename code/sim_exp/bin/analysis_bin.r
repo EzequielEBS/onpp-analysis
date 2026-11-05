@@ -11,6 +11,7 @@ library(latex2exp)
 library(scoringutils)
 library(gt)
 library(gtExtras)
+library(ggh4x)  # needed for plot_sce3_eta()'s facet_grid2(independent = "y")
 
 # run auxiliary functions
 source("code/aux_fun_sim.R")
@@ -182,11 +183,6 @@ table_mse_theta <- df_mse_theta |>
     ONPP        = "ONPP",
     ONPP_SEQ    = "ONPP-SEQ"
   ) |>
-  gt_color_rows(
-    columns   = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
-    palette   = "ggsci::green_material",
-    direction = -1
-  ) |>
   fmt_number(
     columns  = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
     decimals = 3
@@ -210,19 +206,12 @@ table_mse_theta <- df_mse_theta |>
     table.font.size          = 11
   )
 
-# apply row-wise coloring anchored at 0
+# Row-wise gradient as before, plus a bold-white highlight on each row's
+# best (smallest) cell -- see highlight_best_per_row() in aux_fun_sim.R.
 method_cols <- c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ")
-for (i in seq_len(nrow(df_mse_theta))) {
-  row_vals <- as.numeric(df_mse_theta[i, method_cols])
-  
-  table_mse_theta <- table_mse_theta |>
-    data_color(
-      columns = all_of(method_cols),
-      rows    = i,
-      palette = viridisLite::mako(100, direction = -1)[30:70] ,
-      domain  = c(min(row_vals), max(row_vals))
-    )
-}
+table_mse_theta <- highlight_best_per_row(table_mse_theta, df_mse_theta,
+                                          columns = method_cols,
+                                          palette = viridisLite::mako)
 
 gtsave(table_mse_theta, "results/summary_tables/bin/mse_theta_table_bin.png", zoom = 3)
 
@@ -275,11 +264,6 @@ table_wis_theta <- df_wis_theta |>
     ONPP        = "ONPP",
     ONPP_SEQ    = "ONPP-SEQ"
   ) |>
-  gt_color_rows(
-    columns   = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
-    palette   = "ggsci::green_material",
-    direction = -1
-  ) |>
   fmt_number(
     columns  = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
     decimals = 3
@@ -301,18 +285,9 @@ table_wis_theta <- df_wis_theta |>
     table.font.size          = 11
   )
 
-# apply row-wise coloring anchored at 0
-for (i in seq_len(nrow(df_wis_theta))) {
-  row_vals <- as.numeric(df_wis_theta[i, method_cols])
-  
-  table_wis_theta <- table_wis_theta |>
-    data_color(
-      columns = all_of(method_cols),
-      rows    = i,
-      palette = viridisLite::plasma(100, direction = -1)[30:70] ,
-      domain  = c(min(row_vals), max(row_vals))
-    )
-}
+table_wis_theta <- highlight_best_per_row(table_wis_theta, df_wis_theta,
+                                          columns = method_cols,
+                                          palette = viridisLite::plasma)
 gtsave(table_wis_theta, "results/summary_tables/bin/wis_theta_table_bin.png", zoom = 3)
 
 table_mse_wis_theta <- gt_two_column_layout(list(table_mse_theta, table_wis_theta))
@@ -321,7 +296,7 @@ htmltools::save_html(table_mse_wis_theta, "table_mse_wis_theta.html")
 webshot2::webshot("table_mse_wis_theta.html",
                   "results/summary_tables/bin/mse_wis_theta_table.png",
                   zoom    = 3,
-                  vwidth  = 590,   # reduce until white space disappears
+                  vwidth  = 600,   # reduce until white space disappears
                   vheight = 1200)
 
 # plot BCI
@@ -366,49 +341,215 @@ for (spec in bci_specs) {
 
 
 # ------------------------------------------------------------------------------
-# Comparison of scenarios 3
+# Comparison of scenarios 3 across prior specifications (A)/(B)/(C)/(D)
 # ------------------------------------------------------------------------------
+#
+# sim_sce3 (built above) holds, in order: the three "incompatible order"
+# scenarios (3_1/3_2/3_3) under the default prior -- (A) a = 1/2, a' = 1/2,
+# alpha = 1/(K+1) -- then the same three scenarios again under three
+# progressively flatter priors: (B) eta_flat (a' = 1), (C) eta_gamma_flat
+# (a' = 1, alpha = 1), (D) all_flat (a = 1, a' = 1, alpha = 1). So
+# summary_bin_sce3$biass/$mses (12 entries, 4 methods each) split into four
+# consecutive 3-scenario blocks, one per prior column -- see
+# scenarios_bin.R's base_par/flat_variants for where (A)-(D) actually come
+# from. This replaces the old flat table (columns labeled
+# "Bias_Default"/"MSE_Eta_Flat"/... with no indication of what those prior
+# labels actually mean) with the (A)/(B)/(C)/(D) x Bias/MSE two-level
+# header and multirow scenario labels used in the paper.
+#
+# Requires \usepackage{multirow} in the manuscript's LaTeX preamble (for the
+# per-scenario multirow label in the first column) -- not something this
+# script can add for you.
 
-comp_table <- data.frame(scenario = unlist(lapply(7:9, 
-                                    function(i) {
-                                      sce <- as.roman(ceiling(i/3))
-                                      sce <- ifelse(i %% 3 == 1, paste0(sce,".I"), ifelse(i %% 3 == 2, paste0(sce,".II"), paste0(sce,".III")))
-                                      rep(sce,4)
-                                    })),
-                          model = rep(c("NPP", "NPP-SEQ", "ONPP", "ONPP-SEQ"),3),
-                          bias_default = unlist(summary_bin_sce3$biass[1:3]),
-                          mse_default = unlist(summary_bin_sce3$mses[1:3]),
-                          bias_eta_flat = unlist(summary_bin_sce3$biass[4:6]),
-                          mse_eta_flat = unlist(summary_bin_sce3$mses[4:6]),
-                          bias_eta_gamma_flat = unlist(summary_bin_sce3$biass[7:9]),
-                          mse_eta_gamma_flat = unlist(summary_bin_sce3$mses[7:9]),
-                          bias_all_flat = unlist(summary_bin_sce3$biass[10:12]),
-                          mse_all_flat = unlist(summary_bin_sce3$mses[10:12])
+methods <- c("NPP", "NPP-SEQ", "ONPP", "ONPP-SEQ")
+
+sce3_labels <- data.frame(
+  roman       = c("III.I", "III.II", "III.III"),
+  theta0      = vapply(sce3_theta0, function(v) paste0("(", paste(formatC(v, format = "f", digits = 2), collapse = ", "), ")"), character(1)),
+  discrepancy = c("No discrepancy", "Small discrepancy", "Large discrepancy")
 )
-colnames(comp_table) <- c("Scenario", 
-                          "Prior", 
-                          "Bias_Default", 
-                          "MSE_Default",
-                          "Bias_Eta_Flat",
-                          "MSE_Eta_Flat",
-                          "Bias_Eta_Gamma_Flat",
-                          "MSE_Eta_Gamma_Flat",
-                          "Bias_All_Flat",
-                          "MSE_All_Flat"
-                          )
 
-print(xtable::xtable(comp_table %>% 
-                       mutate(
-                         Bias_Default = formatC(Bias_Default, format = "f", digits = 3),
-                         MSE_Default = formatC(MSE_Default, format = "f", digits = 3),
-                         Bias_Eta_Flat = formatC(Bias_Eta_Flat, format = "f", digits = 3),
-                         MSE_Eta_Flat = formatC(MSE_Eta_Flat, format = "f", digits = 3),
-                         Bias_Eta_Gamma_Flat = formatC(Bias_Eta_Gamma_Flat, format = "f", digits = 3),
-                         MSE_Eta_Gamma_Flat = formatC(MSE_Eta_Gamma_Flat, format = "f", digits = 3),
-                         Bias_All_Flat = formatC(Bias_All_Flat, format = "f", digits = 3),
-                         MSE_All_Flat = formatC(MSE_All_Flat, format = "f", digits = 3)
-                       )),
-      type = "latex", include.rownames = FALSE)
+# One multirow LaTeX cell per scenario (content only on that block's first
+# row, blank on the other 3, exactly as \multirow expects).
+scenario_cell <- unlist(lapply(seq_len(nrow(sce3_labels)), function(s) {
+  label <- paste0(
+    "\\multirow{4}{*}{\\shortstack[l]{Scenario ", sce3_labels$roman[s],
+    " \\\\ ", sce3_labels$theta0[s],
+    " \\\\ Incompatible order \\\\ ", sce3_labels$discrepancy[s], "}}"
+  )
+  c(label, "", "", "")
+}))
+
+comp_table <- data.frame(
+  Theta0  = scenario_cell,
+  Prior   = rep(methods, nrow(sce3_labels)),
+  Bias_A  = unlist(summary_bin_sce3$biass[1:3]),
+  MSE_A   = unlist(summary_bin_sce3$mses[1:3]),
+  Bias_B  = unlist(summary_bin_sce3$biass[4:6]),
+  MSE_B   = unlist(summary_bin_sce3$mses[4:6]),
+  Bias_C  = unlist(summary_bin_sce3$biass[7:9]),
+  MSE_C   = unlist(summary_bin_sce3$mses[7:9]),
+  Bias_D  = unlist(summary_bin_sce3$biass[10:12]),
+  MSE_D   = unlist(summary_bin_sce3$mses[10:12]),
+  stringsAsFactors = FALSE
+)
+
+comp_table <- comp_table %>%
+  mutate(across(c(Bias_A, MSE_A, Bias_B, MSE_B, Bias_C, MSE_C, Bias_D, MSE_D),
+                ~ formatC(.x, format = "f", digits = 3)))
+
+# Two-level header: (A)/(B)/(C)/(D) spanners over Bias/MSE sub-columns,
+# injected in place of xtable's default single-row column names
+# (include.colnames = FALSE below) -- xtable has no native support for a
+# grouped/spanning header, so this builds it by hand as raw LaTeX.
+addtorow <- list(
+  pos = list(-1, -1),
+  command = c(
+    "\\hline & & \\multicolumn{2}{c}{(A)} & \\multicolumn{2}{c}{(B)} & \\multicolumn{2}{c}{(C)} & \\multicolumn{2}{c}{(D)} \\\\\n",
+    "$\\theta_0$ & Prior & Bias & MSE & Bias & MSE & Bias & MSE & Bias & MSE \\\\\n"
+  )
+)
+
+print(
+  xtable::xtable(comp_table, align = c("l", "l", "l", rep("r", 8))),
+  add.to.row = addtorow,
+  include.colnames = FALSE,
+  include.rownames = FALSE,
+  hline.after = c(0, 4, 8, 12),
+  sanitize.text.function = identity,
+  type = "latex"
+)
+
+# ------------------------------------------------------------------------------
+# Scenario 3 comparison across priors (A)-(D) -- gt-table version, MSE + WIS
+# ------------------------------------------------------------------------------
+#
+# Same visual style as the "Average MSE"/"Average WIS" tables built above
+# (row-group header, mako/plasma per-row gradient, bold-white highlight on
+# the row's best method -- see highlight_best_per_row() in aux_fun_sim.R),
+# but for the prior-sensitivity comparison instead of the discrepancy-order
+# comparison: rows are grouped by prior spec -- (A) default, (B) eta_flat,
+# (C) eta_gamma_flat, (D) all_flat, see scenarios_bin.R's
+# base_par/flat_variants -- and within each group there's one row per
+# incompatible-order scenario (III.I/II/III). WIS replaces Bias here: Bias
+# isn't on the same scale as MSE/WIS (it can be negative, and its magnitude
+# means something different), so it doesn't fit this table's single
+# continuous per-row color gradient the way a second error-magnitude metric
+# does -- WIS is the same "how good is the interval forecast" companion
+# metric used everywhere else in this script.
+
+prior_labels <- c("(A) Default", "(B) η flat", "(C) η, γ flat", "(D) All flat")
+
+sce3_grid <- data.frame(
+  Theta0      = rep(sce3_labels$theta0, times = 4),
+  Discrepancy = rep(sce3_labels$discrepancy, times = 4),
+  Prior       = rep(prior_labels, each = 3)
+)
+
+df_mse_sce3 <- cbind(sce3_grid, data.frame(
+  NPP      = unlist(lapply(summary_bin_sce3$mses, function(x) x[1])),
+  NPP_SEQ  = unlist(lapply(summary_bin_sce3$mses, function(x) x[2])),
+  ONPP     = unlist(lapply(summary_bin_sce3$mses, function(x) x[3])),
+  ONPP_SEQ = unlist(lapply(summary_bin_sce3$mses, function(x) x[4]))
+))
+
+mse_sce3_scale <- add_common_scale(df_mse_sce3, c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ"))
+df_mse_sce3 <- mse_sce3_scale$df
+
+table_mse_sce3 <- df_mse_sce3 |>
+  gt(groupname_col = "Prior") |>
+  cols_label(
+    Theta0      = "θ₀",
+    Discrepancy = "Discrepancy",
+    NPP         = "NPP",
+    NPP_SEQ     = "NPP-SEQ",
+    ONPP        = "ONPP",
+    ONPP_SEQ    = "ONPP-SEQ"
+  ) |>
+  fmt_number(
+    columns  = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
+    decimals = 3
+  ) |>
+  tab_header(
+    title = paste0("Average MSE", mse_sce3_scale$label)
+  ) |>
+  tab_spanner(
+    label   = "Method",
+    columns = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ)
+  ) |>
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_row_groups()
+  ) |>
+  tab_options(
+    row_group.font.weight    = "bold",
+    row_group.background.color = "#f0f0f0",
+    table.font.size          = 11
+  )
+
+table_mse_sce3 <- highlight_best_per_row(table_mse_sce3, df_mse_sce3,
+                                         columns = method_cols,
+                                         palette = viridisLite::mako)
+
+gtsave(table_mse_sce3, "results/summary_tables/bin/mse_sce3_table_bin.png", zoom = 3)
+
+df_wis_sce3 <- cbind(sce3_grid, data.frame(
+  NPP      = unlist(lapply(summary_bin_sce3$wis_list, function(x) x$hat_wis_npp[1])),
+  NPP_SEQ  = unlist(lapply(summary_bin_sce3$wis_list, function(x) x$hat_wis_nppseq[1])),
+  ONPP     = unlist(lapply(summary_bin_sce3$wis_list, function(x) x$hat_wis_onpp[1])),
+  ONPP_SEQ = unlist(lapply(summary_bin_sce3$wis_list, function(x) x$hat_wis_onppseq[1]))
+))
+
+wis_sce3_scale <- add_common_scale(df_wis_sce3, c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ"))
+df_wis_sce3 <- wis_sce3_scale$df
+df_wis_sce3 <- df_wis_sce3 %>%
+  select(Prior, NPP, NPP_SEQ, ONPP, ONPP_SEQ)
+
+table_wis_sce3 <- df_wis_sce3 |>
+  gt(groupname_col = "Prior") |>
+  cols_label(
+    # Theta0      = "θ₀",
+    # Discrepancy = "Discrepancy",
+    NPP         = "NPP",
+    NPP_SEQ     = "NPP-SEQ",
+    ONPP        = "ONPP",
+    ONPP_SEQ    = "ONPP-SEQ"
+  ) |>
+  fmt_number(
+    columns  = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ),
+    decimals = 3
+  ) |>
+  tab_header(
+    title = paste0("Average WIS", wis_sce3_scale$label)
+  ) |>
+  tab_spanner(
+    label   = "Method",
+    columns = c(NPP, NPP_SEQ, ONPP, ONPP_SEQ)
+  ) |>
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_row_groups()
+  ) |>
+  tab_options(
+    row_group.font.weight    = "bold",
+    row_group.background.color = "#f0f0f0",
+    table.font.size          = 11
+  )
+
+table_wis_sce3 <- highlight_best_per_row(table_wis_sce3, df_wis_sce3,
+                                         columns = method_cols,
+                                         palette = viridisLite::plasma)
+
+gtsave(table_wis_sce3, "results/summary_tables/bin/wis_sce3_table_bin.png", zoom = 3)
+
+table_mse_wis_sce3 <- gt_two_column_layout(list(table_mse_sce3, table_wis_sce3))
+
+htmltools::save_html(table_mse_wis_sce3, "table_mse_wis_sce3.html")
+webshot2::webshot("table_mse_wis_sce3.html",
+                  "results/summary_tables/bin/mse_wis_sce3_table.png",
+                  zoom    = 3,
+                  vwidth  = 630
+                )
 
 # ------------------------------------------------------------------------------
 # Plot boxplots
@@ -546,17 +687,33 @@ sce3_priors <- list(
   )
 )
 
+# plot_sce3_eta()/plot_sce3_theta() were rewritten to use facet_grid()/
+# facet_wrap() internally (see aux_fun_sim.R) -- each call now returns one
+# complete ggplot per scenario (with its own (A)-(D) strip labels and a
+# single legend), not a list of per-panel plots, so all that's left to do
+# here is stack the 3 scenarios and collect their (now-identical) legends
+# into one shared one at the bottom instead of repeating it 3 times.
 plots_sce3_eta <- lapply(1:3, function(i) {
   plot_sce3_eta(i, sim = sim, sim_sces = sce3_priors)
 })
-ggsave("results/figures/bin/post_eta_sce_III_priors_bin.pdf", 
-        wrap_plots(plots_sce3_eta, ncol = 1), width = 10, height = 12, dpi = 300)
+ggsave("results/figures/bin/post_eta_sce_III_priors_bin.pdf",
+       wrap_plots(plots_sce3_eta, ncol = 1) +
+         plot_layout(guides = "collect") &
+         theme(legend.position = "bottom"),
+       width = 10, height = 13, dpi = 300,
+       device = cairo_pdf
+      )
 
 plots_sce3_theta <- lapply(1:3, function(i) {
   plot_sce3_theta(i, sim = sim, sim_sces = sce3_priors)
 })
-ggsave("results/figures/bin/post_theta_sce_III_priors_bin.pdf", 
-       wrap_plots(plots_sce3_theta, ncol = 1), width = 10, height = 8, dpi = 300)
+ggsave("results/figures/bin/post_theta_sce_III_priors_bin.pdf",
+       wrap_plots(plots_sce3_theta, ncol = 1) +
+         plot_layout(guides = "collect") &
+         theme(legend.position = "bottom"),
+       width = 10, height = 8, dpi = 300,
+       device = cairo_pdf  
+      )
 
 
 # NOTE: this originally tried to compare prior-only draws across all four

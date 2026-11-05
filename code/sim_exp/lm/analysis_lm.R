@@ -24,7 +24,7 @@ load("../../simulated-data-regression/data/true_params.RData")
 #
 # The "varying beta" and "varying sigma" sections below each load 12
 # scenarios (order I-IV x congruence I-III) for n0 >= n and n0 <= n, then
-# build a norm table and a WIS table styled identically apart from title,
+# build an MSE table and a WIS table styled identically apart from title,
 # palette, and whether the epsilon/Order/Discrepancy columns are included. That
 # used to be ~450 lines of copy-pasted qs_read() calls and gt-table styling
 # pipelines; both patterns are shared with simulations_lm.r/analysis_seq_lm.r
@@ -46,18 +46,18 @@ load_lm_sims <- function(suffix) {
   sims
 }
 
-# get_summary_lm() reports the beta/sigma error as a norm rather than an
-# MSE (see get_summary_lm.r): for beta (3 coefficients) it's the
-# per-replicate Euclidean norm of the error vector, averaged over
-# replicates; for sigma (a scalar) it's the mean absolute error, the
+# get_summary_lm() reports the beta/sigma error as an MSE (see
+# get_summary_lm.r): for beta (3 coefficients) it's the per-component mean
+# squared error, averaged over the 3 coefficients; for sigma (a scalar)
+# it's just the mean squared error of that one component, the
 # 1-dimensional analogue. WIS is likewise split into WIS_beta (mean of the
 # per-coordinate WIS over beta1/beta2/beta3) and WIS_sigma (sigma alone),
 # instead of one all-4-parameters-combined figure.
-norm_beta_extractor <- function(summary, model_idx) {
-  unlist(lapply(summary$norms, function(x) x$norm_beta[model_idx]))
+mse_beta_extractor <- function(summary, model_idx) {
+  unlist(lapply(summary$mses, function(x) x$mse_beta[model_idx]))
 }
-norm_sigma_extractor <- function(summary, model_idx) {
-  unlist(lapply(summary$norms, function(x) x$norm_sigma[model_idx]))
+mse_sigma_extractor <- function(summary, model_idx) {
+  unlist(lapply(summary$mses, function(x) x$mse_sigma[model_idx]))
 }
 wis_beta_extractor <- function(summary, model_idx) {
   field <- c("hat_wis_npp", "hat_wis_nppseq", "hat_wis_onpp", "hat_wis_onppseq")[model_idx]
@@ -72,7 +72,7 @@ wis_sigma_extractor <- function(summary, model_idx) {
 # all four summary tables. For each of the four methods (NPP/NPP-SEQ/
 # ONPP/ONPP-SEQ) this now produces two columns -- "<method>_beta" and
 # "<method>_sigma" -- via `extractor_beta`/`extractor_sigma`
-# (norm_beta_extractor/norm_sigma_extractor or wis_beta_extractor/
+# (mse_beta_extractor/mse_sigma_extractor or wis_beta_extractor/
 # wis_sigma_extractor above). `extra_cols`, if given, is cbind()-ed in
 # first (used for the epsilon/Order/Discrepancy columns in the "varying beta"
 # tables; the "varying sigma" tables omit them, as in the original).
@@ -93,16 +93,17 @@ build_metric_df <- function(summary_ge, summary_le, extractor_beta, extractor_si
   df
 }
 
-# Builds and styles one gt summary table (norm_beta/wis_beta/norm_sg/wis_sg
-# all use this). `row_palette` is the viridisLite palette function used for
-# the per-row (min-to-max) coloring loop -- mako for norm tables, plasma
-# for WIS tables, matching the original. Columns are grouped by parameter
+# Builds and styles one gt summary table (mse_beta/wis_beta/mse_sg/wis_sg
+# all use this). `highlight_palette` is the viridisLite palette function
+# used for the per-row (min-to-max) gradient -- mako for MSE tables,
+# plasma for WIS tables, matching the original; the row's best (smallest)
+# cell is additionally marked bold white on top of that gradient. Columns are grouped by parameter
 # rather than by method: one spanner for \u03B2 (beta) holding all four
 # methods' beta columns, and one spanner for \u03C3 (sigma) holding all
 # four methods' sigma columns -- so the two parameters can be compared
 # side by side across methods, rather than each method's own beta/sigma
 # pair sitting together.
-build_summary_gt_table <- function(df, title, row_palette, include_eps_discrepancy) {
+build_summary_gt_table <- function(df, title, highlight_palette, include_eps_discrepancy) {
   methods       <- c("NPP", "NPP_SEQ", "ONPP", "ONPP_SEQ")
   method_labels <- c("NPP", "NPP-SEQ", "ONPP", "ONPP-SEQ")
   beta_cols     <- paste0(methods, "_beta")
@@ -127,11 +128,6 @@ build_summary_gt_table <- function(df, title, row_palette, include_eps_discrepan
   tbl <- df |> gt(groupname_col = "Regime") |> cols_label(.list = col_labels)
 
   tbl <- tbl |>
-    gt_color_rows(
-      columns   = all_of(method_cols),
-      palette   = "ggsci::green_material",
-      direction = -1
-    ) |>
     fmt_number(
       columns  = all_of(method_cols),
       decimals = 3
@@ -168,17 +164,16 @@ build_summary_gt_table <- function(df, title, row_palette, include_eps_discrepan
     tab_spanner(label = "\u03B2", columns = all_of(beta_cols)) |>
     tab_spanner(label = "\u03C3", columns = all_of(sigma_cols))
 
-  # apply row-wise coloring anchored at each row's own min/max
-  for (i in seq_len(nrow(df))) {
-    row_vals <- as.numeric(df[i, method_cols])
-    tbl <- tbl |>
-      data_color(
-        columns = all_of(method_cols),
-        rows    = i,
-        palette = row_palette(100, direction = -1)[30:70],
-        domain  = c(min(row_vals), max(row_vals))
-      )
-  }
+  # Highlight only the best (smallest) method per row, instead of a
+  # continuous per-row color gradient across all eight cells -- see
+  # highlight_best_per_row() in aux_fun_sim.R for why. Beta and sigma are
+  # on different scales, so the best method is picked *separately* within
+  # the beta columns and within the sigma columns (groups =), rather than
+  # comparing all eight columns' raw values against each other the way the
+  # old single min/max-across-everything domain implicitly did.
+  tbl <- highlight_best_per_row(tbl, df, columns = method_cols,
+                                groups = list(beta_cols, sigma_cols),
+                                palette = highlight_palette)
   tbl
 }
 
@@ -241,9 +236,9 @@ sim_sces_beta_n0_le_n <- load_lm_sims("varying_beta_n0_le_n")
 summary_beta_n0_ge_n <- get_summary_lm(sim_sces_beta_n0_ge_n, true_value = c(betastar, sgstar))
 summary_beta_n0_le_n <- get_summary_lm(sim_sces_beta_n0_le_n, true_value = c(betastar, sgstar))
 
-df_norm_beta <- build_metric_df(summary_beta_n0_ge_n, summary_beta_n0_le_n, norm_beta_extractor, norm_sigma_extractor, eps_order_discrepancy)
-table_norm_beta <- build_summary_gt_table(df_norm_beta, "Average Norm \u2014 Varying \u03B2", viridisLite::mako, include_eps_discrepancy = TRUE)
-gtsave(table_norm_beta, "results/summary_tables/lm/norm_beta_table.png", zoom = 3)
+df_mse_beta <- build_metric_df(summary_beta_n0_ge_n, summary_beta_n0_le_n, mse_beta_extractor, mse_sigma_extractor, eps_order_discrepancy)
+table_mse_beta <- build_summary_gt_table(df_mse_beta, "Average MSE \u2014 Varying \u03B2", viridisLite::mako, include_eps_discrepancy = TRUE)
+gtsave(table_mse_beta, "results/summary_tables/lm/mse_beta_table.png", zoom = 3)
 
 df_wis_beta <- build_metric_df(summary_beta_n0_ge_n, summary_beta_n0_le_n, wis_beta_extractor, wis_sigma_extractor, eps_order_discrepancy)
 table_wis_beta <- build_summary_gt_table(df_wis_beta, "Average WIS \u2014 Varying \u03B2", viridisLite::plasma, include_eps_discrepancy = TRUE)
@@ -259,9 +254,9 @@ sim_sces_sigma_n0_le_n <- load_lm_sims("varying_sigma_n0_le_n")
 summary_sigma_n0_ge_n <- get_summary_lm(sim_sces_sigma_n0_ge_n, true_value = c(betastar, sgstar))
 summary_sigma_n0_le_n <- get_summary_lm(sim_sces_sigma_n0_le_n, true_value = c(betastar, sgstar))
 
-df_norm_sg <- build_metric_df(summary_sigma_n0_ge_n, summary_sigma_n0_le_n, norm_beta_extractor, norm_sigma_extractor)
-table_norm_sg <- build_summary_gt_table(df_norm_sg, "Average Norm \u2014 Varying \u03C3", viridisLite::mako, include_eps_discrepancy = FALSE)
-gtsave(table_norm_sg, "results/summary_tables/lm/norm_sg_table.png", zoom = 3)
+df_mse_sg <- build_metric_df(summary_sigma_n0_ge_n, summary_sigma_n0_le_n, mse_beta_extractor, mse_sigma_extractor)
+table_mse_sg <- build_summary_gt_table(df_mse_sg, "Average MSE \u2014 Varying \u03C3", viridisLite::mako, include_eps_discrepancy = FALSE)
+gtsave(table_mse_sg, "results/summary_tables/lm/mse_sg_table.png", zoom = 3)
 
 df_wis_sg <- build_metric_df(summary_sigma_n0_ge_n, summary_sigma_n0_le_n, wis_beta_extractor, wis_sigma_extractor)
 table_wis_sg <- build_summary_gt_table(df_wis_sg, "Average WIS \u2014 Varying \u03C3", viridisLite::plasma, include_eps_discrepancy = FALSE)
@@ -271,18 +266,18 @@ gtsave(table_wis_sg, "results/summary_tables/lm/wis_sg_table.png", zoom = 3)
 # combined layout
 #------------------------------------------------------------------------------
 
-table_norm_theta <- gt_two_column_layout(list(table_norm_beta, table_norm_sg))
+table_mse_theta <- gt_two_column_layout(list(table_mse_beta, table_mse_sg))
 table_wis_theta <- gt_two_column_layout(list(table_wis_beta, table_wis_sg))
 
-htmltools::save_html(table_norm_theta, "table_norm_theta.html")
+htmltools::save_html(table_mse_theta, "table_mse_theta.html")
 htmltools::save_html(table_wis_theta, "table_wis_theta.html")
-webshot2::webshot("table_norm_theta.html",
-                  "results/summary_tables/lm/norm_theta_table.png",
-                  zoom    = 3,
-                  vwidth  = 830,   # reduce until white space disappears
-                  vheight = 1200)
+webshot2::webshot("table_mse_theta.html",
+                  "results/summary_tables/lm/mse_theta_table.png",
+                  zoom    = 320/96,
+                  vwidth  = 920,   # reduce until white space disappears
+                  vheight = 2000)
 webshot2::webshot("table_wis_theta.html",
                   "results/summary_tables/lm/wis_theta_table.png",
-                  zoom    = 3,
-                  vwidth  = 830,   # reduce until white space disappears
-                  vheight = 1200)
+                  zoom    = 320/96,
+                  vwidth  = 920,   # reduce until white space disappears
+                  vheight = 2000)

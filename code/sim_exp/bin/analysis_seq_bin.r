@@ -131,7 +131,18 @@ sample_prior_post_bin <- function(i, r, sce_list, sim_list) {
   # sim_sce() calls internally; calling it directly here (sce$post is
   # already forced to 0 above, so this draws from the prior) gives the same
   # single draw without any cluster setup/teardown overhead.
-  prior_fit <- sample_sce_bin(sce, gamma_model_bin, delta_model_bin)
+  #
+  # Cached to disk (qs2) so re-running this script -- e.g. just to tweak
+  # figure aesthetics -- doesn't re-fit the Stan prior model every time.
+  # Delete the cache file to force a re-sample (e.g. after changing a
+  # scenario's parameters in sce_list above).
+  cache_file <- sprintf("results/samples/bin/prior_cache_sce%d.qs2", i)
+  if (file.exists(cache_file)) {
+    prior_fit <- qs2::qs_read(cache_file)
+  } else {
+    prior_fit <- sample_sce_bin(sce, gamma_model_bin, delta_model_bin)
+    qs2::qs_save(prior_fit, file = cache_file)
+  }
   eta_prior <- prior_fit[c("delta_npp", "delta_nppseq", "delta_onpp", "delta_onppseq")]
   theta_prior <- prior_fit[c("theta_npp", "theta_nppseq", "theta_onpp", "theta_onppseq")]
   eta_post <- sim$delta[[r]]
@@ -145,153 +156,73 @@ sample_prior_post_bin <- function(i, r, sce_list, sim_list) {
 }
 
 
-plot_theta_bin <- function(
-  draws, 
-  ordered = F,
-  post = F,
-  theta_true = .5,
-  c_band = c(0.5, 0.5),
-  title = NULL,
-  leg = T
-) {
-  draws_theta_nppseq <- draws$theta_nppseq
-  draws_theta_npp <- draws$theta_npp
-  if (ordered) {
-    draws_theta_nppseq <- draws$theta_onppseq
-    draws_theta_npp <- draws$theta_onpp
-  }
-
-  if (post) {
-    y_lab <- expression(paste(pi[0], "(", theta ~ "|" ~ D ~ "," ~ D[0], ")"))
-  } else {
-    y_lab <- expression(paste(pi[0], "(", theta, ")"))
-  }
-
-  plot_theta <- ggplot() +
-    geom_density(bounds = c(0, 1), aes(x = draws_theta_nppseq, color = "SEQ"), size = 1) +
-    geom_density(bounds = c(0, 1), aes(x = draws_theta_npp, color = "pi"), size = 1) +
-    labs(x = expression(theta), y = y_lab) +
-    geom_vline(xintercept = theta_true, linetype = "dashed", color = "black") +
-    scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
-                        labels = c("SEQ" = "SEQ",
-                                    "pi" = "Default")) +
-    scale_y_continuous(labels = function(x) format(round(x, 1), nsmall = 1)) +
-    scale_x_continuous(labels = function(x) format(round(x, 1), nsmall = 1),
-                        limits = c(theta_true[1] - c_band[1], theta_true[1] + c_band[1])
-                      ) +
-    theme_minimal() +
-    ggtitle(
-      title
-    )
-  if (leg) {
-    out <- plot_theta & theme(legend.position = "bottom")
-  } else {
-    out <- plot_theta & theme(legend.position = "none")
-  }
-  out
-}
-
-plot_eta_bin <- function(
-  draws, 
-  ordered = F,
-  post = F,
-  title = NULL,
-  leg = T
-) {
-  draws_eta_nppseq <- draws$delta_nppseq[, 1:3]
-  draws_eta_npp <- draws$delta_npp[, 1:3]
-  if (ordered) {
-    draws_eta_nppseq <- draws$delta_onppseq[, 1:3]
-    draws_eta_npp <- draws$delta_onpp[, 1:3]
-  }
-  if (post) {
-    y_lab <- expression(paste(pi[A], "(", eta ~ "|" ~ D ~ "," ~ D[0], ")"))
-  } else {
-    y_lab <- expression(paste(pi[A], "(", eta, ")"))
-  }
-
-  plot_eta1 <- ggplot() +
-    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 1], color = "SEQ"), size = 1) +
-    geom_density(bounds = c(0, 1), aes(x = draws_eta_npp[, 1], color = "pi"), size = 1) +
-    labs(x = expression(eta[1]), y = y_lab) +
-    scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
-                        labels = c("SEQ" = "SEQ",
-                                    "pi" = "Default")) +
-    scale_y_continuous(labels = function(x) format(round(x, 2), nsmall = 2)) +
-    scale_x_continuous(labels = function(x) format(round(x, 2), nsmall = 2),
-                        limits = c(0,1)) +
-    theme_minimal() +
-    ggtitle(
-      title
-    )
-  plot_eta2 <- ggplot() +
-    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 2], color = "SEQ"), size = 1) +
-    geom_density(bounds = c(0, 1), aes(x = draws_eta_npp[, 2], color = "pi"), size = 1) +
-    labs(x = expression(eta[2]), y = "") +
-    scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
-                        labels = c("SEQ" = "SEQ",
-                                    "pi" = "Default")) +
-    scale_y_continuous(labels = function(x) format(round(x, 2), nsmall = 2)) +
-    scale_x_continuous(labels = function(x) format(round(x, 2), nsmall = 2),
-                        limits = c(0,1)) +
-    theme_minimal()
-  plot_eta3 <- ggplot() +
-    geom_density(bounds = c(0, 1), aes(x = draws_eta_nppseq[, 3], color = "SEQ"), size = 1) +
-    geom_density(bounds = c(0, 1), aes(x = draws_eta_npp[, 3], color = "pi"), size = 1) +
-    labs(x = expression(eta[3]), y = "") +
-    scale_color_manual(name = NULL, values = c("SEQ" = "blue", "pi" = "red"), 
-                        labels = c("SEQ" = "SEQ",
-                                    "pi" = "Default")) +
-    scale_y_continuous(labels = function(x) format(round(x, 2), nsmall = 2)) +
-    scale_x_continuous(labels = function(x) format(round(x, 2), nsmall = 2),
-                        limits = c(0,1)) +
-    theme_minimal()
-  
-  out <- plot_eta1 + plot_eta2 + plot_eta3 +
-  plot_layout(ncol = 3, guides = "collect") 
-  if (leg) {
-    out <- out & theme(legend.position = "bottom")
-  } else {
-    out <- out & theme(legend.position = "none")
-  }
-  out
-}
+# plot_theta_bin()/plot_eta_bin() used to be defined here (and, byte-for-
+# byte identically apart from the family name, in analysis_seq_normal.r and
+# analysis_seq_lm.r). They're now plot_theta_prior_post()/
+# plot_eta_prior_post() in aux_fun_sim.R -- one shared definition instead
+# of three copies that could silently drift apart -- see the comment above
+# those functions for the full rationale.
 
 r <- 1
 plots_npp_sce <- lapply(1:3, function(i) {
-  samples <- sample_prior_post_bin(i, r, sce_list, sim_list) 
-  sce_name <- paste0("Scenario ", as.roman(round((i+1)/3)), ".", 
-                      as.roman(ifelse(i %% 3 == 0, 3, i %% 3)),
-                      ":"
-                    )
+  samples <- sample_prior_post_bin(i, r, sce_list, sim_list)
+  # No "Scenario ..." label -- theta0/Order/Discrepancy already identify
+  # the scenario.
   title <- bquote(
-    .(sce_name)~theta[0] == .(df_sce$Theta0[i])~", Order:"~.(df_sce$Order[i])~", Discrepancy:"~.(df_sce$Discrepancy[i])
+    theta[0] == .(df_sce$Theta0[i])~", Order:"~.(df_sce$Order[i])~", Discrepancy:"~.(df_sce$Discrepancy[i])
   )
   if (i != 3){
-    plot_theta_prior <- plot_theta_bin(samples$theta_prior, title = title, leg = F)
-    plot_eta_prior <- plot_eta_bin(samples$eta_prior, title = title, leg = F)
-    plot_theta_post <- plot_theta_bin(samples$theta_post, post = T, leg = F, 
-      c_band = c(0.2, 0.2))
-    plot_eta_post <- plot_eta_bin(samples$eta_post, post = T, leg = F)
+    plot_theta_prior <- plot_theta_prior_post(samples$theta_prior, title = title, leg = F,
+      theta_true = 0.5, low_band = 0.5, upp_band = 0.5)
+    plot_eta_prior <- plot_eta_prior_post(samples$eta_prior, title = title, leg = F)
+    plot_theta_post <- plot_theta_prior_post(samples$theta_post, post = T, leg = F,
+      theta_true = 0.5, low_band = 0.2, upp_band = 0.2)
+    plot_eta_post <- plot_eta_prior_post(samples$eta_post, post = T, leg = F)
   } else {
-    plot_theta_prior <- plot_theta_bin(samples$theta_prior, title = title, leg = F)
-    plot_eta_prior <- plot_eta_bin(samples$eta_prior, title = title, leg = F)
-    plot_theta_post <- plot_theta_bin(samples$theta_post, post = T, leg = T,
-      c_band = c(0.2, 0.2))
-    plot_eta_post <- plot_eta_bin(samples$eta_post, post = T, leg = T)
+    plot_theta_prior <- plot_theta_prior_post(samples$theta_prior, title = title, leg = F,
+      theta_true = 0.5, low_band = 0.5, upp_band = 0.5)
+    plot_eta_prior <- plot_eta_prior_post(samples$eta_prior, title = title, leg = F)
+    plot_theta_post <- plot_theta_prior_post(samples$theta_post, post = T, leg = T,
+      theta_true = 0.5, low_band = 0.2, upp_band = 0.2)
+    plot_eta_post <- plot_eta_prior_post(samples$eta_post, post = T, leg = T)
   }
   
   plot_theta <- plot_theta_prior + plot_theta_post
-  plot_eta <- plot_eta_prior / plot_eta_post + plot_layout(guides = "collect") 
+  # No plot_layout(guides = "collect") here -- see the note below on
+  # plots_eta_npp for why relying on collect (rather than the leg flag
+  # alone) was producing duplicate/misplaced legends.
+  plot_eta <- plot_eta_prior / plot_eta_post
   list(
     plot_theta = plot_theta,
     plot_eta = plot_eta
     )
 })
 
-plots_eta_npp <- lapply(1:3, function(i) plots_npp_sce[[i]]$plot_eta) %>% 
-  wrap_plots(ncol = 1, guides = "collect") 
-plots_theta_npp <- lapply(1:3, function(i) plots_npp_sce[[i]]$plot_theta) %>% 
+# NOTE on legends: this composition deliberately avoids
+# plot_layout(guides = "collect")/wrap_plots(..., guides = "collect")
+# entirely for the eta figure -- exactly like plots_theta_npp below,
+# which never used collect and has always rendered with a single legend.
+# Two things were tried and both produced duplicate/misplaced legends:
+#  1. guides = "collect" at both the per-scenario level (plot_eta_prior /
+#     plot_eta_post) and again at this outer wrap_plots() -- once
+#     scenario 3's own local collect had already resolved/materialized
+#     its legend, this outer collect couldn't merge it with the (empty)
+#     guide sets of scenarios 1-2, and just left it where the inner
+#     collect put it, positioned by patchwork's default ("right") since
+#     no theme(legend.position=...) was set at this true top level.
+#  2. Adding `& theme(legend.position = "bottom")` here to fix that
+#     positioning: `&` recurses into every nested sub-plot, including the
+#     ones with legend.position = "none" from leg = F at the call sites
+#     above -- forcing position = "bottom" on those rebuilt a guide for
+#     each of them too (3 separate legends instead of 1).
+# Instead: only scenario 3's post plot ever sets leg = T, so it's the
+# only one that builds a guide at all; with no collect anywhere, that one
+# guide renders right where plot_eta_prior_post() already puts it (its
+# own theme(legend.position = "bottom")), and since it's the last block,
+# that's the bottom of the whole figure.
+plots_eta_npp <- lapply(1:3, function(i) plots_npp_sce[[i]]$plot_eta) %>%
+  wrap_plots(ncol = 1)
+plots_theta_npp <- lapply(1:3, function(i) plots_npp_sce[[i]]$plot_theta) %>%
   wrap_plots(ncol = 1)
 
 ggsave("results/figures/bin/theta_prior_post_npp.pdf", plots_theta_npp, width = 9, height = 13.5)

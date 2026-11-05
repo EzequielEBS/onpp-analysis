@@ -34,8 +34,8 @@ delta_model_normal <- cmdstan_model("code/models/normal/normal_fixed_var_npp.sta
 # scenario definitions. Output file paths are unchanged from the original
 # script.
 normal_default_par <- list(n0 = c(100, 100, 100), n = 100, sigma2 = 1,
-                            mu0 = 0, tau02 = 1, al = 1/2, bl = 1/2,
-                            theta = 5, alpha = rep(1/4, 4))
+                            mu0 = 0, tau02 = 100, al = 1, bl = 1,
+                            theta = 5, alpha = rep(1, 4))
 
 normal_theta0 <- list(
   "1_1" = c(4.6, 4.8, 5),   "1_2" = c(3.6, 3.8, 4),   "1_3" = c(2.6, 2.8, 3),
